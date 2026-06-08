@@ -63,6 +63,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      # Admin Service Database (External Repository)
+      ADMIN_POSTGRES_HOST: ${ADMIN_POSTGRES_HOST:-host.docker.internal}
+      ADMIN_POSTGRES_PORT: ${ADMIN_POSTGRES_PORT:-5432}
+      ADMIN_POSTGRES_USER: ${ADMIN_POSTGRES_USER:-postgres}
+      ADMIN_POSTGRES_PASSWORD: ${ADMIN_POSTGRES_PASSWORD:-root}
+      ADMIN_DB: ${ADMIN_DB:-admin_service}
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8000"
     depends_on:
@@ -75,6 +81,8 @@ services:
     volumes:
       - ./services/auth-service:/app
       - ./libs:/libs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # User Service
   user-service:

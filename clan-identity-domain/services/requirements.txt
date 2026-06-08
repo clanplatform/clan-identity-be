@@ -28,6 +28,10 @@ aiohttp==3.10.10
 python-dotenv==1.0.1
 email-validator==2.2.0
 
+# Kafka
+aiokafka==0.11.0
+kafka-python==2.0.2
+
 # Monitoring & Logging
 prometheus-client==0.21.0
 python-json-logger==3.1.0

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
         return [str(v)]
 
     # Database settings - PostgreSQL common settings
-    POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
+    POSTGRES_SERVER: str = os.getenv("POSTGRES_HOST", os.getenv("POSTGRES_SERVER", "localhost"))
     POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "root")
@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     # Auth Service Database
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "auth_service")
 
-    # Admin Service Database (for user lookup)
+    # Admin Service Database (for user lookup) - Can be in different host/repo
+    ADMIN_POSTGRES_HOST: str = os.getenv("ADMIN_POSTGRES_HOST", os.getenv("POSTGRES_HOST", "localhost"))
+    ADMIN_POSTGRES_PORT: int = int(os.getenv("ADMIN_POSTGRES_PORT", os.getenv("POSTGRES_PORT", "5432")))
+    ADMIN_POSTGRES_USER: str = os.getenv("ADMIN_POSTGRES_USER", os.getenv("POSTGRES_USER", "postgres"))
+    ADMIN_POSTGRES_PASSWORD: str = os.getenv("ADMIN_POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "root"))
     ADMIN_DB: str = os.getenv("ADMIN_DB", "admin_service")
 
     @computed_field
@@ -71,7 +75,7 @@ class Settings(BaseSettings):
     @property
     def ADMIN_DATABASE_URL(self) -> str:
         """Admin service database URL for user authentication"""
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.ADMIN_DB}"
+        return f"postgresql://{self.ADMIN_POSTGRES_USER}:{self.ADMIN_POSTGRES_PASSWORD}@{self.ADMIN_POSTGRES_HOST}:{self.ADMIN_POSTGRES_PORT}/{self.ADMIN_DB}"
 
     # JWT/Authentication settings
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "auth-service-super-secret-key-change-in-production")

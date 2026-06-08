@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Auth Service Settings"""
     
-    PROJECT_NAME: str = "Auth Service"
+    PROJECT_NAME: str = "user Service"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
