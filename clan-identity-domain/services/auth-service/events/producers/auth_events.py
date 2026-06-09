@@ -22,6 +22,7 @@ from ..schemas import (
     OTPGeneratedEvent,
     OTPVerifiedEvent,
     OTPExpiredEvent,
+    UserDataSyncEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Kafka topics
 AUTH_EVENTS_TOPIC = "auth.events.dev"
 SESSION_EVENTS_TOPIC = "session.events.dev"
+USER_SYNC_TOPIC = "user.sync.admin_service.dev"
 
 
 async def publish_user_login_event(
@@ -488,3 +490,85 @@ async def publish_otp_expired_event(
         logger.error(f"Failed to publish otp_expired event: {str(e)}")
         return False
 
+
+
+async def publish_user_data_sync_event(
+    user_id: UUID,
+    email: str,
+    sync_action: str,
+    username: Optional[str] = None,
+    firstname: Optional[str] = None,
+    lastname: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    phone_number: Optional[str] = None,
+    status: str = "active",
+    department: Optional[str] = None,
+    division: Optional[str] = None,
+    job_code: Optional[str] = None,
+    manage_roles: Optional[list] = None,
+    default_dept: Optional[str] = None,
+    reporting_to: Optional[str] = None,
+    entities: Optional[list] = None,
+    default_entity: Optional[str] = None,
+    tenant_id: Optional[UUID] = None,
+    last_login_at: Optional[datetime] = None,
+    last_login_ip: Optional[str] = None,
+    correlation_id: Optional[str] = None
+) -> bool:
+    """
+    Publish user data sync event to admin-service
+    
+    This event is consumed by admin-service to sync user activity data
+    from auth-service back to the user_setup table in clan-platform-domain-be
+    
+    Args:
+        user_id: User UUID
+        email: User email
+        sync_action: Action triggering sync (login, password_change, etc.)
+        ... (user profile fields)
+        last_login_at: Last login timestamp
+        last_login_ip: Last login IP address
+    """
+    if not KAFKA_ENABLED:
+        logger.debug("Kafka disabled, skipping user_data_sync event")
+        return False
+
+    try:
+        event = UserDataSyncEvent(
+            user_id=user_id,
+            email=email,
+            username=username,
+            firstname=firstname,
+            lastname=lastname,
+            employee_id=employee_id,
+            phone_number=phone_number,
+            status=status,
+            department=department,
+            division=division,
+            job_code=job_code,
+            manage_roles=manage_roles,
+            default_dept=default_dept,
+            reporting_to=reporting_to,
+            entities=entities,
+            default_entity=default_entity,
+            tenant_id=tenant_id,
+            sync_action=sync_action,
+            last_login_at=last_login_at,
+            last_login_ip=last_login_ip,
+            correlation_id=correlation_id
+        )
+
+        producer = await get_producer()
+        event_json = event.model_dump_json()
+        
+        await producer.send_and_wait(
+            topic=USER_SYNC_TOPIC,
+            value=event_json.encode("utf-8"),
+            key=str(user_id).encode("utf-8")
+        )
+
+        logger.info(f"Published user_data_sync event for user {user_id} with action '{sync_action}'")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to publish user_data_sync event: {str(e)}")
+        return False

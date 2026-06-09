@@ -3,6 +3,7 @@ Login Service - Business Logic Layer
 Handles user authentication logic
 Authenticates against admin_service.usersetup_basic table
 Stores sessions in user_service database
+Publishes sync events to admin-service for user activity tracking
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -11,6 +12,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import logging
+import asyncio
 
 # Import models (will need to be created or imported correctly)
 try:
@@ -40,6 +42,31 @@ from core.security import (
     get_password_hash, hash_token, verify_token
 )
 from core.config import settings
+
+# Import event publishers
+try:
+    from events.producers.auth_events import (
+        publish_user_login_event,
+        publish_user_password_changed_event,
+        publish_user_data_sync_event,
+        publish_session_created_event
+    )
+except ImportError:
+    # Fallback import
+    try:
+        from app.events.producers.auth_events import (
+            publish_user_login_event,
+            publish_user_password_changed_event,
+            publish_user_data_sync_event,
+            publish_session_created_event
+        )
+    except ImportError:
+        # If event publishers not available, create no-op functions
+        logger.warning("Event publishers not available - events will not be published")
+        async def publish_user_login_event(*args, **kwargs): return False
+        async def publish_user_password_changed_event(*args, **kwargs): return False
+        async def publish_user_data_sync_event(*args, **kwargs): return False
+        async def publish_session_created_event(*args, **kwargs): return False
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +246,56 @@ class LoginService:
             auth_db, user["id"], login_data.email, client_ip, user_agent, True, None
         )
 
+        # Publish user login event (async, non-blocking)
+        asyncio.create_task(
+            publish_user_login_event(
+                user_id=user["id"],
+                email=user["email"],
+                username=user.get("username"),
+                ip_address=client_ip,
+                user_agent=user_agent,
+                login_method="password"
+            )
+        )
+
+        # Publish session created event (async, non-blocking)
+        asyncio.create_task(
+            publish_session_created_event(
+                user_id=user["id"],
+                email=user["email"],
+                session_id=str(session.id),
+                ip_address=client_ip,
+                user_agent=user_agent,
+                expires_at=session.expires_at
+            )
+        )
+
+        # Publish user data sync event to admin-service (async, non-blocking)
+        asyncio.create_task(
+            publish_user_data_sync_event(
+                user_id=user["id"],
+                email=user["email"],
+                sync_action="login",
+                username=user.get("username"),
+                firstname=user.get("firstname"),
+                lastname=user.get("lastname"),
+                employee_id=user.get("employee_id"),
+                phone_number=user.get("phone_number"),
+                status=user.get("status", "active"),
+                department=user.get("department"),
+                division=user.get("division"),
+                job_code=user.get("job_code"),
+                manage_roles=user.get("manage_roles"),
+                default_dept=user.get("default_dept"),
+                reporting_to=user.get("reporting_to"),
+                entities=user.get("entities"),
+                default_entity=user.get("default_entity"),
+                tenant_id=user.get("tenant_id"),
+                last_login_at=datetime.now(timezone.utc),
+                last_login_ip=client_ip
+            )
+        )
+
         # Prepare user info
         user_info = UserLoginInfo(
             id=user["id"],
@@ -308,6 +385,40 @@ class LoginService:
             "email": email
         })
         admin_db.commit()
+
+        # Publish password changed event (async, non-blocking)
+        asyncio.create_task(
+            publish_user_password_changed_event(
+                user_id=user["id"],
+                email=email,
+                changed_by="user",
+                is_first_login=user.get("is_password_change_required", False)
+            )
+        )
+
+        # Publish user data sync event to admin-service (async, non-blocking)
+        asyncio.create_task(
+            publish_user_data_sync_event(
+                user_id=user["id"],
+                email=email,
+                sync_action="password_change",
+                username=user.get("username"),
+                firstname=user.get("firstname"),
+                lastname=user.get("lastname"),
+                employee_id=user.get("employee_id"),
+                phone_number=user.get("phone_number"),
+                status=user.get("status", "active"),
+                department=user.get("department"),
+                division=user.get("division"),
+                job_code=user.get("job_code"),
+                manage_roles=user.get("manage_roles"),
+                default_dept=user.get("default_dept"),
+                reporting_to=user.get("reporting_to"),
+                entities=user.get("entities"),
+                default_entity=user.get("default_entity"),
+                tenant_id=user.get("tenant_id")
+            )
+        )
 
         return ChangePasswordResponse(
             message="The password is successfully changed. You will logout in 2 sec",

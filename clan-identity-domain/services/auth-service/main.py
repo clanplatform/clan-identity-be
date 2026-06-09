@@ -131,8 +131,7 @@ app.add_middleware(
 if login and hasattr(login, 'router'):
     app.include_router(
         login.router,
-        prefix=f"{settings.API_V1_STR}/login",
-        tags=["Login"]
+        prefix=f"{settings.API_V1_STR}/login"
     )
 else:
     logger.error("Login router not available - API endpoints will not be registered")

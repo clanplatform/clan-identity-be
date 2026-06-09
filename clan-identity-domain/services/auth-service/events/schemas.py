@@ -146,3 +146,29 @@ class OTPExpiredEvent(BaseEvent):
     otp_type: str = "login"
     expired_at: datetime
 
+
+class UserDataSyncEvent(BaseEvent):
+    """Event published to sync user data to admin-service"""
+    event_type: str = "user.data_sync"
+    user_id: UUID
+    email: str
+    username: Optional[str] = None
+    firstname: Optional[str] = None
+    lastname: Optional[str] = None
+    employee_id: Optional[str] = None
+    phone_number: Optional[str] = None
+    status: str = "active"
+    department: Optional[str] = None
+    division: Optional[str] = None
+    job_code: Optional[str] = None
+    manage_roles: Optional[list] = None
+    default_dept: Optional[str] = None
+    reporting_to: Optional[str] = None
+    entities: Optional[list] = None
+    default_entity: Optional[str] = None
+    tenant_id: Optional[UUID] = None
+    sync_source: str = "auth-service"  # Source service triggering sync
+    sync_action: str  # login, password_change, profile_update, etc.
+    last_login_at: Optional[datetime] = None
+    last_login_ip: Optional[str] = None
+
