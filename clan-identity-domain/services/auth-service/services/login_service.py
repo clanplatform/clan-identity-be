@@ -87,59 +87,90 @@ class LoginService:
     """
 
     @staticmethod
-    def get_user_from_auth_db(auth_db: Session, email: str) -> Optional[AuthUser]:
+    def get_user_from_auth_db(db: Session, email: str) -> Optional[AuthUser]:
         """
         Get user from auth_users table by email
         Returns AuthUser ORM object or None
         """
         try:
-            user = auth_db.query(AuthUser).filter(AuthUser.email == email).first()
+            user = db.query(AuthUser).filter(AuthUser.email == email).first()
             return user
         except Exception as e:
             logger.error(f"Error querying auth_users table: {e}")
+            logger.exception("Full exception:")
+            # Rollback to clear any failed transaction state
+            try:
+                db.rollback()
+            except:
+                pass
             return None
 
     @staticmethod
     def create_auth_user_from_admin_data(
-        auth_db: Session,
+        db: Session,
         admin_user_data: Dict[str, Any],
         password_hash: str
     ) -> AuthUser:
         """
         Create a new user in auth_users table from admin service data
         Called after successful password change on first login
+        Copies all fields from usersetup_basic to auth_users
         """
         try:
+            logger.info(f"Creating auth_user for email: {admin_user_data['email']}")
+            
             auth_user = AuthUser(
-                admin_user_id=admin_user_data["id"],
-                email=admin_user_data["email"],
+                user_setup_id=admin_user_data["id"],
+                # Personal Information
+                firstname=admin_user_data["firstname"],
+                lastname=admin_user_data["lastname"],
+                employee_id=admin_user_data["employee_id"],
                 username=admin_user_data["username"],
+                email=admin_user_data["email"],
+                phone_number=admin_user_data.get("phone_number"),
+                # Authentication
                 password_hash=password_hash,
-                firstname=admin_user_data.get("firstname"),
-                lastname=admin_user_data.get("lastname"),
-                employee_id=admin_user_data.get("employee_id"),
-                status=admin_user_data.get("status", "active"),
-                is_active=True,
-                is_password_change_required=False,
                 password_changed=datetime.now(timezone.utc),
-                roles=admin_user_data.get("manage_roles"),
+                is_password_change=True,  # Password has been changed
+                # Employment Status
+                status=admin_user_data.get("status", "active"),
+                start_date=admin_user_data.get("start_date"),
+                end_date=admin_user_data.get("end_date"),
+                tem_employee=admin_user_data.get("tem_employee", False),
+                # Organizational Structure
+                department=admin_user_data.get("department"),
+                division=admin_user_data.get("division"),
+                job_code=admin_user_data.get("job_code"),
+                # Role Management
+                manage_roles=admin_user_data.get("manage_roles"),
+                # Default Settings
+                default_dept=admin_user_data.get("default_dept"),
+                reporting_to=admin_user_data.get("reporting_to"),
+                # Entity Access
+                entities=admin_user_data.get("entities"),
+                default_entity=admin_user_data.get("default_entity"),
+                # View Preferences
+                view=admin_user_data.get("view"),
+                dashboard_view=admin_user_data.get("dashboard_view"),
             )
-            auth_db.add(auth_user)
-            auth_db.commit()
-            auth_db.refresh(auth_user)
-            logger.info(f"Created auth_user for {admin_user_data['email']}")
+            
+            db.add(auth_user)
+            db.commit()
+            db.refresh(auth_user)
+            logger.info(f"Created auth_user for {admin_user_data['email']} with ID: {auth_user.id}")
             return auth_user
         except Exception as e:
-            auth_db.rollback()
+            db.rollback()
             logger.error(f"Failed to create auth_user: {e}")
+            logger.exception("Full exception:")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create user account"
+                detail=f"Failed to create user account: {str(e)}"
             )
 
     @staticmethod
     def update_auth_user_password(
-        auth_db: Session,
+        db: Session,
         user: AuthUser,
         new_password_hash: str
     ) -> AuthUser:
@@ -149,14 +180,14 @@ class LoginService:
         try:
             user.password_hash = new_password_hash
             user.password_changed = datetime.now(timezone.utc)
-            user.is_password_change_required = False
+            user.is_password_change = True  # Password has been changed
             user.updated_at = datetime.now(timezone.utc)
-            auth_db.commit()
-            auth_db.refresh(user)
+            db.commit()
+            db.refresh(user)
             logger.info(f"Updated password for auth_user {user.email}")
             return user
         except Exception as e:
-            auth_db.rollback()
+            db.rollback()
             logger.error(f"Failed to update auth_user password: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -169,73 +200,83 @@ class LoginService:
         Get user from admin_service.usersetup_basic table by email
         Returns user data as dictionary
         """
-        query = text("""
-            SELECT
-                ub.id,
-                ub.user_setup_id,
-                ub.firstname,
-                ub.lastname,
-                ub.employee_id,
-                ub.username,
-                ub.email,
-                ub.phone_number,
-                ub.password_hash,
-                ub.password_changed,
-                ub.is_password_change,
-                NOT ub.is_password_change as is_password_change_required,
-                ub.status,
-                ub.department,
-                ub.division,
-                ub.job_code,
-                ub.manage_roles,
-                ub.default_dept,
-                ub.reporting_to,
-                ub.entities,
-                ub.default_entity,
-                ub.created_at,
-                ub.updated_at
-            FROM usersetup_basic ub
-            WHERE ub.email = :email
-        """)
+        try:
+            query = text("""
+                SELECT
+                    ub.id,
+                    ub.user_setup_id,
+                    ub.firstname,
+                    ub.lastname,
+                    ub.employee_id,
+                    ub.username,
+                    ub.email,
+                    ub.phone_number,
+                    ub.password_hash,
+                    ub.password_changed,
+                    ub.is_password_change,
+                    NOT ub.is_password_change as is_password_change_required,
+                    ub.status,
+                    ub.department,
+                    ub.division,
+                    ub.job_code,
+                    ub.manage_roles,
+                    ub.default_dept,
+                    ub.reporting_to,
+                    ub.entities,
+                    ub.default_entity,
+                    ub.created_at,
+                    ub.updated_at
+                FROM usersetup_basic ub
+                WHERE ub.email = :email
+            """)
 
-        result = admin_db.execute(query, {"email": email}).fetchone()
+            result = admin_db.execute(query, {"email": email}).fetchone()
 
-        if result:
-            return {
-                "id": result.id,
-                "user_setup_id": result.user_setup_id,
-                "firstname": result.firstname,
-                "lastname": result.lastname,
-                "employee_id": result.employee_id,
-                "username": result.username,
-                "email": result.email,
-                "phone_number": result.phone_number,
-                "password_hash": result.password_hash,
-                "password_changed": result.password_changed,
-                "is_password_change": result.is_password_change,
-                "is_password_change_required": result.is_password_change_required,
-                "status": result.status,
-                "department": result.department,
-                "division": result.division,
-                "job_code": result.job_code,
-                "manage_roles": result.manage_roles,
-                "default_dept": result.default_dept,
-                "reporting_to": result.reporting_to,
-                "entities": result.entities,
-                "default_entity": result.default_entity,
-                "created_at": result.created_at,
-                "updated_at": result.updated_at,
-            }
-        return None
+            if result:
+                return {
+                    "id": result.id,
+                    "user_setup_id": result.user_setup_id,
+                    "firstname": result.firstname,
+                    "lastname": result.lastname,
+                    "employee_id": result.employee_id,
+                    "username": result.username,
+                    "email": result.email,
+                    "phone_number": result.phone_number,
+                    "password_hash": result.password_hash,
+                    "password_changed": result.password_changed,
+                    "is_password_change": result.is_password_change,
+                    "is_password_change_required": result.is_password_change_required,
+                    "status": result.status,
+                    "department": result.department,
+                    "division": result.division,
+                    "job_code": result.job_code,
+                    "manage_roles": result.manage_roles,
+                    "default_dept": result.default_dept,
+                    "reporting_to": result.reporting_to,
+                    "entities": result.entities,
+                    "default_entity": result.default_entity,
+                    "created_at": result.created_at,
+                    "updated_at": result.updated_at,
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error querying admin_service.usersetup_basic table: {e}")
+            logger.exception("Full exception:")
+            # Rollback to clear any failed transaction state
+            try:
+                admin_db.rollback()
+            except:
+                pass
+            return None
 
     @staticmethod
-    def authenticate_user(auth_db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
+    def authenticate_user(db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
         """
         Authenticate user by email and password
         Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
-        auth_user = LoginService.get_user_from_auth_db(auth_db, email)
+        auth_user = LoginService.get_user_from_auth_db(db, email)
         
         if auth_user:
             # User exists in auth_users - authenticate locally
@@ -246,20 +287,32 @@ class LoginService:
             # Convert AuthUser ORM object to dictionary for consistency
             return {
                 "id": auth_user.id,
-                "admin_user_id": auth_user.admin_user_id,
-                "user_setup_id": auth_user.admin_user_id,  # Alias for compatibility
+                "admin_user_id": auth_user.user_setup_id,
+                "user_setup_id": auth_user.user_setup_id,  # Alias for compatibility
                 "firstname": auth_user.firstname,
                 "lastname": auth_user.lastname,
                 "employee_id": auth_user.employee_id,
                 "username": auth_user.username,
                 "email": auth_user.email,
+                "phone_number": auth_user.phone_number,
                 "password_hash": auth_user.password_hash,
                 "password_changed": auth_user.password_changed,
-                "is_password_change": not auth_user.is_password_change_required,
-                "is_password_change_required": auth_user.is_password_change_required,
+                "is_password_change": auth_user.is_password_change,
+                "is_password_change_required": not auth_user.is_password_change,
                 "status": auth_user.status,
-                "roles": auth_user.roles or [],
-                "manage_roles": auth_user.roles or [],  # Alias for compatibility
+                "start_date": auth_user.start_date,
+                "end_date": auth_user.end_date,
+                "tem_employee": auth_user.tem_employee,
+                "department": auth_user.department,
+                "division": auth_user.division,
+                "job_code": auth_user.job_code,
+                "manage_roles": auth_user.manage_roles or [],
+                "default_dept": auth_user.default_dept,
+                "reporting_to": auth_user.reporting_to,
+                "entities": auth_user.entities,
+                "default_entity": auth_user.default_entity,
+                "view": auth_user.view,
+                "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
                 "source": "auth_db"  # Mark source for tracking
@@ -281,7 +334,7 @@ class LoginService:
 
     @staticmethod
     def login(
-        auth_db: Session,
+        db: Session,
         admin_db: Session,
         login_data: LoginRequest,
         client_ip: str = None,
@@ -290,16 +343,16 @@ class LoginService:
         """
         Login user and generate tokens
         - Authenticates from auth_users table (if exists) or admin_service.usersetup_basic (first login)
-        - Stores session in user_service database
+        - Stores session in auth_service database
         - Returns 403 if password change is required
         """
         # Authenticate user (checks auth_users first, then admin_service)
-        user = LoginService.authenticate_user(auth_db, admin_db, login_data.email, login_data.password)
+        user = LoginService.authenticate_user(db, admin_db, login_data.email, login_data.password)
 
         if not user:
-            # Log failed attempt in user_service database
+            # Log failed attempt in auth_service database
             LoginService._log_login_attempt(
-                auth_db, None, login_data.email, client_ip, user_agent, False, "invalid_credentials"
+                db, None, login_data.email, client_ip, user_agent, False, "invalid_credentials"
             )
 
             raise HTTPException(
@@ -311,7 +364,7 @@ class LoginService:
         # Check if user is active
         if user["status"] != "active":
             LoginService._log_login_attempt(
-                auth_db, user["id"], login_data.email, client_ip, user_agent, False, "account_inactive"
+                db, user["id"], login_data.email, client_ip, user_agent, False, "account_inactive"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -322,7 +375,7 @@ class LoginService:
         if user["is_password_change_required"]:
             # Log the attempt as successful but requiring password change
             LoginService._log_login_attempt(
-                auth_db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required"
+                db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required"
             )
 
             # Raise HTTPException with password change required info
@@ -353,16 +406,16 @@ class LoginService:
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
         refresh_token = create_refresh_token(data=token_data, expires_delta=refresh_token_expires)
 
-        # Create session in user_service database
+        # Create session in auth_service database
         session = LoginService._create_session(
-            auth_db, user["id"], access_token, refresh_token,
+            db, user["id"], access_token, refresh_token,
             client_ip, user_agent, login_data.device_fingerprint,
             refresh_token_expires
         )
 
-        # Log successful attempt in user_service database
+        # Log successful attempt in auth_service database
         LoginService._log_login_attempt(
-            auth_db, user["id"], login_data.email, client_ip, user_agent, True, None
+            db, user["id"], login_data.email, client_ip, user_agent, True, None
         )
 
         # Publish user login event (async, non-blocking)
@@ -414,6 +467,11 @@ class LoginService:
 
         # Publish user data sync event to admin-service (async, non-blocking)
         try:
+            # Convert UUID fields to strings for event schema
+            def uuid_to_str(value):
+                """Convert UUID to string, or return None if None"""
+                return str(value) if value is not None else None
+            
             executor = ThreadPoolExecutor(max_workers=1)
             executor.submit(
                 run_async_task,
@@ -427,14 +485,14 @@ class LoginService:
                     employee_id=user.get("employee_id"),
                     phone_number=user.get("phone_number"),
                     status=user.get("status", "active"),
-                    department=user.get("department"),
-                    division=user.get("division"),
-                    job_code=user.get("job_code"),
+                    department=uuid_to_str(user.get("department")),
+                    division=uuid_to_str(user.get("division")),
+                    job_code=uuid_to_str(user.get("job_code")),
                     manage_roles=user.get("manage_roles"),
-                    default_dept=user.get("default_dept"),
-                    reporting_to=user.get("reporting_to"),
+                    default_dept=uuid_to_str(user.get("default_dept")),
+                    reporting_to=uuid_to_str(user.get("reporting_to")),
                     entities=user.get("entities"),
-                    default_entity=user.get("default_entity"),
+                    default_entity=uuid_to_str(user.get("default_entity")),
                     last_login_at=datetime.now(timezone.utc),
                     last_login_ip=client_ip
                 )
@@ -467,7 +525,7 @@ class LoginService:
 
     @staticmethod
     def change_password(
-        auth_db: Session,
+        db: Session,
         admin_db: Session,
         email: str,
         current_password: str,
@@ -537,15 +595,15 @@ class LoginService:
         admin_db.commit()
 
         # Create or update user in auth_users table
-        auth_user = LoginService.get_user_from_auth_db(auth_db, email)
+        auth_user = LoginService.get_user_from_auth_db(db, email)
         
         if auth_user:
             # Update existing auth_user password
-            LoginService.update_auth_user_password(auth_db, auth_user, new_hash)
+            LoginService.update_auth_user_password(db, auth_user, new_hash)
             logger.info(f"Updated password for existing auth_user: {email}")
         else:
             # Create new auth_user (first password change after first login)
-            LoginService.create_auth_user_from_admin_data(auth_db, admin_user, new_hash)
+            LoginService.create_auth_user_from_admin_data(db, admin_user, new_hash)
             logger.info(f"Created new auth_user after first password change: {email}")
 
         # Publish password changed event (async, non-blocking)
@@ -577,6 +635,11 @@ class LoginService:
 
         # Publish user data sync event to admin-service (async, non-blocking)
         try:
+            # Convert UUID fields to strings for event schema
+            def uuid_to_str(value):
+                """Convert UUID to string, or return None if None"""
+                return str(value) if value is not None else None
+            
             executor = ThreadPoolExecutor(max_workers=1)
             executor.submit(
                 run_async_task,
@@ -590,14 +653,14 @@ class LoginService:
                     employee_id=admin_user.get("employee_id"),
                     phone_number=admin_user.get("phone_number"),
                     status=admin_user.get("status", "active"),
-                    department=admin_user.get("department"),
-                    division=admin_user.get("division"),
-                    job_code=admin_user.get("job_code"),
+                    department=uuid_to_str(admin_user.get("department")),
+                    division=uuid_to_str(admin_user.get("division")),
+                    job_code=uuid_to_str(admin_user.get("job_code")),
                     manage_roles=admin_user.get("manage_roles"),
-                    default_dept=admin_user.get("default_dept"),
-                    reporting_to=admin_user.get("reporting_to"),
+                    default_dept=uuid_to_str(admin_user.get("default_dept")),
+                    reporting_to=uuid_to_str(admin_user.get("reporting_to")),
                     entities=admin_user.get("entities"),
-                    default_entity=admin_user.get("default_entity")
+                    default_entity=uuid_to_str(admin_user.get("default_entity"))
                 )
             )
         except Exception as e:
@@ -669,9 +732,9 @@ class LoginService:
         }
 
     @staticmethod
-    def logout_user(auth_db: Session, user_id: str, refresh_token: Optional[str] = None, all_sessions: bool = False) -> Dict[str, Any]:
+    def logout_user(db: Session, user_id: str, refresh_token: Optional[str] = None, all_sessions: bool = False) -> Dict[str, Any]:
         """
-        Logout user - Invalidate user session(s) in user_service database
+        Logout user - Invalidate user session(s) in auth_service database
         """
         # TODO: Implement actual session invalidation logic
         # This should:
@@ -698,19 +761,28 @@ class LoginService:
         expires_delta: timedelta
     ) -> UserSession:
         """Create a new user session"""
-        session = UserSession(
-            user_id=user_id,
-            access_token_hash=hash_token(access_token),
-            refresh_token_hash=hash_token(refresh_token),
-            ip_address=ip_address,
-            user_agent=user_agent,
-            device_fingerprint=device_fingerprint,
-            expires_at=datetime.now(timezone.utc) + expires_delta
-        )
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-        return session
+        try:
+            session = UserSession(
+                user_id=user_id,
+                access_token_hash=hash_token(access_token),
+                refresh_token_hash=hash_token(refresh_token),
+                ip_address=ip_address,
+                user_agent=user_agent,
+                device_fingerprint=device_fingerprint,
+                expires_at=datetime.now(timezone.utc) + expires_delta
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+            return session
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to create session: {e}")
+            logger.exception("Full exception:")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create user session: {str(e)}"
+            )
 
     @staticmethod
     def _log_login_attempt(
@@ -723,13 +795,18 @@ class LoginService:
         failure_reason: str
     ):
         """Log a login attempt"""
-        attempt = LoginAttempt(
-            user_id=user_id,
-            email_or_username=email,
-            ip_address=ip_address or "unknown",
-            user_agent=user_agent,
-            is_successful=is_successful,
-            failure_reason=failure_reason
-        )
-        db.add(attempt)
-        db.commit()
+        try:
+            attempt = LoginAttempt(
+                user_id=user_id,
+                email_or_username=email,
+                ip_address=ip_address or "unknown",
+                user_agent=user_agent,
+                is_successful=is_successful,
+                failure_reason=failure_reason
+            )
+            db.add(attempt)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to log login attempt: {e}")
+            # Don't raise - login attempt logging is not critical

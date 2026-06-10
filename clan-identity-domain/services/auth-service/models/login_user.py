@@ -1,10 +1,10 @@
 """
 Auth User Model for auth_service database
+Mirrors the usersetup_basic table structure from admin_service
 Used for local authentication after first password change.
-Users authenticate from this table for improved performance.
 """
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, Text
+from sqlalchemy import Column, String, DateTime, Boolean, Date
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 
@@ -16,54 +16,55 @@ except ImportError:
 
 class AuthUser(Base):
     """
-    Auth User table - NOT USED FOR AUTHENTICATION
-    Users are authenticated against admin_service.usersetup_basic
-    This table is kept for potential future use.
+    Auth User table - Mirrors usersetup_basic structure
+    Used for local authentication after first password change
     """
     __tablename__ = "auth_users"
 
+    # Primary Key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
     # Reference to admin_service user (for linking)
-    admin_user_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    user_setup_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
-    # Authentication credentials
-    email = Column(String(255), nullable=False, unique=True, index=True)
+    # Personal Information
+    firstname = Column(String(100), nullable=False)
+    lastname = Column(String(100), nullable=False)
+    employee_id = Column(String(50), nullable=False, unique=True, index=True)
     username = Column(String(100), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    phone_number = Column(String(20), nullable=True)
+    
+    # Authentication
     password_hash = Column(String(255), nullable=False)
-    
-    # Basic user info (cached from admin service)
-    firstname = Column(String(100), nullable=True)
-    lastname = Column(String(100), nullable=True)
-    employee_id = Column(String(50), nullable=True, unique=True)
-    
-    # Account status
-    status = Column(String(50), nullable=False, default='active')  # active, inactive, suspended, locked
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_verified = Column(Boolean, default=False, nullable=False)
-    
-    # Password management
     password_changed = Column(DateTime(timezone=True), nullable=True)
-    is_password_change_required = Column(Boolean, default=True, nullable=False)
-    password_reset_token = Column(String(255), nullable=True)
-    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
+    is_password_change = Column(Boolean, default=False, nullable=False)
     
-    # Login tracking
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    last_login_ip = Column(String(45), nullable=True)  # IPv6 compatible
-    failed_login_attempts = Column(String(10), default='0', nullable=False)
-    locked_until = Column(DateTime(timezone=True), nullable=True)
+    # Employment Status
+    status = Column(String(50), nullable=False, default='active', index=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    tem_employee = Column(Boolean, default=False, nullable=False)
     
-    # Two-factor authentication
-    two_factor_enabled = Column(Boolean, default=False, nullable=False)
-    two_factor_secret = Column(String(255), nullable=True)
-    two_factor_backup_codes = Column(Text, nullable=True)  # JSON array of backup codes
+    # Organizational Structure (stored as UUIDs, no FK constraints)
+    department = Column(UUID(as_uuid=True), nullable=True)
+    division = Column(UUID(as_uuid=True), nullable=True)
+    job_code = Column(UUID(as_uuid=True), nullable=True)
     
-    # Session management
-    current_token = Column(Text, nullable=True)  # Current active token
+    # Role Management
+    manage_roles = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
     
-    # Roles (cached from admin service for quick access)
-    roles = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
+    # Default Settings
+    default_dept = Column(UUID(as_uuid=True), nullable=True)
+    reporting_to = Column(UUID(as_uuid=True), nullable=True)
+    
+    # Entity Access
+    entities = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
+    default_entity = Column(UUID(as_uuid=True), nullable=True)
+    
+    # View Preferences
+    view = Column(String(50), nullable=True)
+    dashboard_view = Column(String(50), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -78,4 +79,9 @@ class AuthUser(Base):
         if self.firstname and self.lastname:
             return f"{self.firstname} {self.lastname}"
         return self.username
+    
+    @property
+    def is_password_change_required(self) -> bool:
+        """Check if password change is required (inverse of is_password_change)"""
+        return not self.is_password_change
 

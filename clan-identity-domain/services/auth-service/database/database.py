@@ -86,14 +86,12 @@ def init_db():
     """
     # Import all models to register them with Base.metadata
     try:
-        from models.user import AuthUser
-        from models.otp import OTP
+        from models.login_user import AuthUser
         from models.session import Session
         from models.login_attempt import LoginAttempt
     except ImportError:
         try:
-            from app.models.user import AuthUser
-            from app.models.otp import OTP
+            from app.models.login_user import AuthUser
             from app.models.session import Session
             from app.models.login_attempt import LoginAttempt
         except ImportError:

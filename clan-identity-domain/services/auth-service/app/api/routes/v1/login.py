@@ -41,7 +41,7 @@ router = APIRouter()
 
     **Response cases:**
     1. **Successful login**: Returns access_token, refresh_token, session_id, and user details
-    2. **Password change required**: Returns is_password_change: false with message "change password"
+    2. **Password change required**: Returns 403 with message "change password"
        - User must call `/change-password` endpoint
        - After password change, call `/after-change-password-login` to get tokens
     """,
@@ -50,14 +50,15 @@ router = APIRouter()
 def login(
     request: Request,
     login_data: LoginRequest,
-    auth_db: Session = Depends(get_db),
+    db: Session = Depends(get_db),
     admin_db: Session = Depends(get_admin_db)
 ):
     """
     Login endpoint - Authenticate user with email and password
     
-    - Authenticates user from admin_service.usersetup_basic table
-    - If password change required, returns password change info
+    - Authenticates user from admin_service.usersetup_basic table (first login)
+    - Or from local auth_users table (subsequent logins)
+    - If password change required, returns 403
     - Otherwise stores session and returns JWT tokens
     """
     # Extract client information from request
@@ -66,7 +67,7 @@ def login(
 
     # Delegate to service layer
     return LoginService.login(
-        auth_db=auth_db,
+        db=db,
         admin_db=admin_db,
         login_data=login_data,
         client_ip=client_ip,
@@ -84,7 +85,7 @@ def login(
 )
 def change_password(
     password_data: ChangePasswordRequest,
-    auth_db: Session = Depends(get_db),
+    db: Session = Depends(get_db),
     admin_db: Session = Depends(get_admin_db)
 ):
     """
@@ -99,7 +100,7 @@ def change_password(
     """
     # Delegate to service layer
     return LoginService.change_password(
-        auth_db=auth_db,
+        db=db,
         admin_db=admin_db,
         email=password_data.email,
         current_password=password_data.current_password,
@@ -121,10 +122,10 @@ def change_password(
 def logout(
     logout_data: LogoutRequest = None,
     current_user_id: str = Depends(get_current_user_id),
-    auth_db: Session = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
-    Logout endpoint - Invalidate user session in user_service database
+    Logout endpoint - Invalidate user session in auth_service database
     
     **Options:**
     - Single session logout (default)
@@ -132,7 +133,7 @@ def logout(
     """
     # Delegate to service layer
     return LoginService.logout_user(
-        auth_db=auth_db,
+        db=db,
         user_id=current_user_id,
         refresh_token=logout_data.refresh_token if logout_data else None,
         all_sessions=logout_data.all_sessions if logout_data else False
