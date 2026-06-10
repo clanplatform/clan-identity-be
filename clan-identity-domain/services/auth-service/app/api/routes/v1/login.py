@@ -79,24 +79,27 @@ def login(
     response_model=ChangePasswordResponse,
     status_code=status.HTTP_200_OK,
     summary="Change Password",
-    description="Change password in admin_service.usersetup_basic table.",
+    description="Change password in admin_service.usersetup_basic table and create/update auth_users record.",
     tags=["Authentication"]
 )
 def change_password(
     password_data: ChangePasswordRequest,
+    auth_db: Session = Depends(get_db),
     admin_db: Session = Depends(get_admin_db)
 ):
     """
-    Change user password in admin_service database
+    Change user password in both admin_service and auth_service databases
     
     **Flow:**
     - Validates current password
     - Ensures new password matches confirmation
-    - Updates password in database
+    - Updates password in admin_service database
+    - Creates/updates user in auth_users table (auth_service)
     - Returns success message with logout timer
     """
     # Delegate to service layer
     return LoginService.change_password(
+        auth_db=auth_db,
         admin_db=admin_db,
         email=password_data.email,
         current_password=password_data.current_password,
@@ -105,44 +108,6 @@ def change_password(
     )
 
 
-@router.post(
-    "/after-change-password-login",
-    response_model=LoginResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Login After Password Change",
-    description="""
-    Login endpoint for users who have just changed their password.
-
-    **Flow:**
-    1. User attempts login → receives `is_password_change_required: true`
-    2. User calls `/change-password` → receives success with `logout_in_seconds: 2`
-    3. After 2 seconds, frontend calls this endpoint with new password
-    4. User receives access_token, refresh_token, and full user details
-    """,
-    tags=["Authentication"]
-)
-def after_change_password_login(
-    request: Request,
-    login_data: LoginRequest,
-    auth_db: Session = Depends(get_db),
-    admin_db: Session = Depends(get_admin_db)
-):
-    """
-    Login endpoint for users who have just changed their password.
-    Returns full login response with tokens and user details.
-    """
-    # Extract client information from request
-    client_ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent", "")
-
-    # Delegate to service layer (same login logic)
-    return LoginService.login(
-        auth_db=auth_db,
-        admin_db=admin_db,
-        login_data=login_data,
-        client_ip=client_ip,
-        user_agent=user_agent
-    )
 
 
 @router.post(
@@ -174,35 +139,6 @@ def logout(
     )
 
 
-@router.get(
-    "/me",
-    response_model=Dict[str, str],
-    status_code=status.HTTP_200_OK,
-    summary="Get Current User",
-    description="Get current authenticated user information from admin_service",
-    tags=["User Info"]
-)
-def get_current_user(
-    current_user_id: str = Depends(get_current_user_id),
-    admin_db: Session = Depends(get_admin_db)
-):
-    """
-    Get current authenticated user info from admin_service
-    
-    **Returns:**
-    - user_id: User UUID
-    - email: User email address
-    - username: Username
-    - firstname: First name
-    - lastname: Last name
-    - employee_id: Employee ID
-    - status: Account status
-    """
-    # Delegate to service layer
-    return LoginService.get_current_user_info(
-        admin_db=admin_db,
-        user_id=current_user_id
-    )
 
 
 @router.post(

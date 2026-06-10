@@ -1,15 +1,17 @@
 """
 Auth User Model for auth_service database
-NOTE: This model is NOT used for authentication.
-Users are authenticated against admin_service.usersetup_basic table.
-This table is kept for potential future use (e.g., caching user data).
+Used for local authentication after first password change.
+Users authenticate from this table for improved performance.
 """
 import uuid
 from sqlalchemy import Column, String, DateTime, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 
-from app.db.database import Base
+try:
+    from database.database import Base
+except ImportError:
+    from app.db.database import Base
 
 
 class AuthUser(Base):

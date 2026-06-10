@@ -510,7 +510,6 @@ async def publish_user_data_sync_event(
     reporting_to: Optional[str] = None,
     entities: Optional[list] = None,
     default_entity: Optional[str] = None,
-    tenant_id: Optional[UUID] = None,
     last_login_at: Optional[datetime] = None,
     last_login_ip: Optional[str] = None,
     correlation_id: Optional[str] = None
@@ -551,7 +550,6 @@ async def publish_user_data_sync_event(
             reporting_to=reporting_to,
             entities=entities,
             default_entity=default_entity,
-            tenant_id=tenant_id,
             sync_action=sync_action,
             last_login_at=last_login_at,
             last_login_ip=last_login_ip,

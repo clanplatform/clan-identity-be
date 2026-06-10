@@ -1,7 +1,10 @@
 """
 Login Service - Business Logic Layer
 Handles user authentication logic
-Authenticates against admin_service.usersetup_basic table
+AUTHENTICATION FLOW:
+1. First login: Authenticates against admin_service.usersetup_basic table
+2. After password change: Creates user in auth_users table
+3. Subsequent logins: Authenticates from auth_users table
 Stores sessions in user_service database
 Publishes sync events to admin-service for user activity tracking
 """
@@ -18,10 +21,12 @@ import asyncio
 try:
     from models.session import Session as UserSession
     from models.login_attempt import LoginAttempt
+    from models.login_user import AuthUser
 except ImportError:
     # Fallback imports from app
     from app.models.session import Session as UserSession
     from app.models.login_attempt import LoginAttempt
+    from app.models.login_user import AuthUser
 
 # Import schemas
 try:
@@ -74,9 +79,89 @@ logger = logging.getLogger(__name__)
 class LoginService:
     """
     Service class for handling user authentication business logic
-    Authenticates users against admin_service.usersetup_basic table
+    AUTHENTICATION FLOW:
+    1. First time: Authenticates against admin_service.usersetup_basic table
+    2. After password change: Creates user record in auth_users table
+    3. Subsequent logins: Authenticates from auth_users table (faster, local)
     Stores sessions and login attempts in user_service database
     """
+
+    @staticmethod
+    def get_user_from_auth_db(auth_db: Session, email: str) -> Optional[AuthUser]:
+        """
+        Get user from auth_users table by email
+        Returns AuthUser ORM object or None
+        """
+        try:
+            user = auth_db.query(AuthUser).filter(AuthUser.email == email).first()
+            return user
+        except Exception as e:
+            logger.error(f"Error querying auth_users table: {e}")
+            return None
+
+    @staticmethod
+    def create_auth_user_from_admin_data(
+        auth_db: Session,
+        admin_user_data: Dict[str, Any],
+        password_hash: str
+    ) -> AuthUser:
+        """
+        Create a new user in auth_users table from admin service data
+        Called after successful password change on first login
+        """
+        try:
+            auth_user = AuthUser(
+                admin_user_id=admin_user_data["id"],
+                email=admin_user_data["email"],
+                username=admin_user_data["username"],
+                password_hash=password_hash,
+                firstname=admin_user_data.get("firstname"),
+                lastname=admin_user_data.get("lastname"),
+                employee_id=admin_user_data.get("employee_id"),
+                status=admin_user_data.get("status", "active"),
+                is_active=True,
+                is_password_change_required=False,
+                password_changed=datetime.now(timezone.utc),
+                roles=admin_user_data.get("manage_roles"),
+            )
+            auth_db.add(auth_user)
+            auth_db.commit()
+            auth_db.refresh(auth_user)
+            logger.info(f"Created auth_user for {admin_user_data['email']}")
+            return auth_user
+        except Exception as e:
+            auth_db.rollback()
+            logger.error(f"Failed to create auth_user: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user account"
+            )
+
+    @staticmethod
+    def update_auth_user_password(
+        auth_db: Session,
+        user: AuthUser,
+        new_password_hash: str
+    ) -> AuthUser:
+        """
+        Update password for existing auth_users record
+        """
+        try:
+            user.password_hash = new_password_hash
+            user.password_changed = datetime.now(timezone.utc)
+            user.is_password_change_required = False
+            user.updated_at = datetime.now(timezone.utc)
+            auth_db.commit()
+            auth_db.refresh(user)
+            logger.info(f"Updated password for auth_user {user.email}")
+            return user
+        except Exception as e:
+            auth_db.rollback()
+            logger.error(f"Failed to update auth_user password: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update password"
+            )
 
     @staticmethod
     def get_user_from_admin_db(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
@@ -107,7 +192,6 @@ class LoginService:
                 ub.reporting_to,
                 ub.entities,
                 ub.default_entity,
-                ub.tenant_id,
                 ub.created_at,
                 ub.updated_at
             FROM usersetup_basic ub
@@ -139,17 +223,49 @@ class LoginService:
                 "reporting_to": result.reporting_to,
                 "entities": result.entities,
                 "default_entity": result.default_entity,
-                "tenant_id": result.tenant_id,
                 "created_at": result.created_at,
                 "updated_at": result.updated_at,
             }
         return None
 
     @staticmethod
-    def authenticate_user(admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
+    def authenticate_user(auth_db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
         """
-        Authenticate user by email and password against admin_service.usersetup_basic
+        Authenticate user by email and password
+        Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
         """
+        # First, try to authenticate from auth_users table (local, faster)
+        auth_user = LoginService.get_user_from_auth_db(auth_db, email)
+        
+        if auth_user:
+            # User exists in auth_users - authenticate locally
+            if not verify_password(password, auth_user.password_hash):
+                logger.warning(f"Invalid password for auth_user: {email}")
+                return None
+            
+            # Convert AuthUser ORM object to dictionary for consistency
+            return {
+                "id": auth_user.id,
+                "admin_user_id": auth_user.admin_user_id,
+                "user_setup_id": auth_user.admin_user_id,  # Alias for compatibility
+                "firstname": auth_user.firstname,
+                "lastname": auth_user.lastname,
+                "employee_id": auth_user.employee_id,
+                "username": auth_user.username,
+                "email": auth_user.email,
+                "password_hash": auth_user.password_hash,
+                "password_changed": auth_user.password_changed,
+                "is_password_change": not auth_user.is_password_change_required,
+                "is_password_change_required": auth_user.is_password_change_required,
+                "status": auth_user.status,
+                "roles": auth_user.roles or [],
+                "manage_roles": auth_user.roles or [],  # Alias for compatibility
+                "created_at": auth_user.created_at,
+                "updated_at": auth_user.updated_at,
+                "source": "auth_db"  # Mark source for tracking
+            }
+        
+        # Fallback: Try admin_service.usersetup_basic (first-time login)
         user = LoginService.get_user_from_admin_db(admin_db, email)
 
         if not user:
@@ -160,6 +276,7 @@ class LoginService:
             logger.warning(f"Invalid password for user: {email}")
             return None
 
+        user["source"] = "admin_db"  # Mark source for tracking
         return user
 
     @staticmethod
@@ -172,12 +289,12 @@ class LoginService:
     ) -> LoginResponse:
         """
         Login user and generate tokens
-        - Authenticates against admin_service.usersetup_basic table
+        - Authenticates from auth_users table (if exists) or admin_service.usersetup_basic (first login)
         - Stores session in user_service database
-        - Returns 403-like response if password change is required
+        - Returns 403 if password change is required
         """
-        # Authenticate user against admin_service database
-        user = LoginService.authenticate_user(admin_db, login_data.email, login_data.password)
+        # Authenticate user (checks auth_users first, then admin_service)
+        user = LoginService.authenticate_user(auth_db, admin_db, login_data.email, login_data.password)
 
         if not user:
             # Log failed attempt in user_service database
@@ -208,16 +325,19 @@ class LoginService:
                 auth_db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required"
             )
 
-            # Return simple response - password change required
+            # Raise HTTPException with password change required info
             # is_password_change value from database (false = needs to change password)
-            return {
-                "is_password_change": user["is_password_change"],
-                "message": "First Time Login Detected - Please change your password",
-                "email": user["email"],
-                "show_popup": True,
-                "error_code": "FIRST_LOGIN_PASSWORD_CHANGE_REQUIRED",
-                "error_type": "validation_error",
-            }
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "is_password_change": user["is_password_change"],
+                    "message": "First Time Login Detected - Please change your password",
+                    "email": user["email"],
+                    "show_popup": True,
+                    "error_code": "FIRST_LOGIN_PASSWORD_CHANGE_REQUIRED",
+                    "error_type": "validation_error",
+                }
+            )
 
         # Generate tokens
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -228,7 +348,6 @@ class LoginService:
             "email": user["email"],
             "username": user["username"],
             "user_setup_id": str(user["user_setup_id"]) if user["user_setup_id"] else None,
-            "tenant_id": str(user["tenant_id"]) if user["tenant_id"] else None,
         }
 
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
@@ -247,54 +366,81 @@ class LoginService:
         )
 
         # Publish user login event (async, non-blocking)
-        asyncio.create_task(
-            publish_user_login_event(
-                user_id=user["id"],
-                email=user["email"],
-                username=user.get("username"),
-                ip_address=client_ip,
-                user_agent=user_agent,
-                login_method="password"
+        try:
+            import asyncio
+            from concurrent.futures import ThreadPoolExecutor
+            
+            def run_async_task(coro):
+                """Helper to run async task in background"""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(coro)
+                    loop.close()
+                except Exception as e:
+                    logger.warning(f"Background task error: {e}")
+            
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(
+                run_async_task,
+                publish_user_login_event(
+                    user_id=user["id"],
+                    email=user["email"],
+                    username=user.get("username"),
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                    login_method="password"
+                )
             )
-        )
+        except Exception as e:
+            logger.warning(f"Failed to publish user_login event: {e}")
 
         # Publish session created event (async, non-blocking)
-        asyncio.create_task(
-            publish_session_created_event(
-                user_id=user["id"],
-                email=user["email"],
-                session_id=str(session.id),
-                ip_address=client_ip,
-                user_agent=user_agent,
-                expires_at=session.expires_at
+        try:
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(
+                run_async_task,
+                publish_session_created_event(
+                    user_id=user["id"],
+                    email=user["email"],
+                    session_id=str(session.id),
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                    expires_at=session.expires_at
+                )
             )
-        )
+        except Exception as e:
+            logger.warning(f"Failed to publish session_created event: {e}")
 
         # Publish user data sync event to admin-service (async, non-blocking)
-        asyncio.create_task(
-            publish_user_data_sync_event(
-                user_id=user["id"],
-                email=user["email"],
-                sync_action="login",
-                username=user.get("username"),
-                firstname=user.get("firstname"),
-                lastname=user.get("lastname"),
-                employee_id=user.get("employee_id"),
-                phone_number=user.get("phone_number"),
-                status=user.get("status", "active"),
-                department=user.get("department"),
-                division=user.get("division"),
-                job_code=user.get("job_code"),
-                manage_roles=user.get("manage_roles"),
-                default_dept=user.get("default_dept"),
-                reporting_to=user.get("reporting_to"),
-                entities=user.get("entities"),
-                default_entity=user.get("default_entity"),
-                tenant_id=user.get("tenant_id"),
-                last_login_at=datetime.now(timezone.utc),
-                last_login_ip=client_ip
+        try:
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(
+                run_async_task,
+                publish_user_data_sync_event(
+                    user_id=user["id"],
+                    email=user["email"],
+                    sync_action="login",
+                    username=user.get("username"),
+                    firstname=user.get("firstname"),
+                    lastname=user.get("lastname"),
+                    employee_id=user.get("employee_id"),
+                    phone_number=user.get("phone_number"),
+                    status=user.get("status", "active"),
+                    department=user.get("department"),
+                    division=user.get("division"),
+                    job_code=user.get("job_code"),
+                    manage_roles=user.get("manage_roles"),
+                    default_dept=user.get("default_dept"),
+                    reporting_to=user.get("reporting_to"),
+                    entities=user.get("entities"),
+                    default_entity=user.get("default_entity"),
+                    last_login_at=datetime.now(timezone.utc),
+                    last_login_ip=client_ip
+                )
             )
-        )
+        except Exception as e:
+            logger.warning(f"Failed to publish user_data_sync event: {e}")
 
         # Prepare user info
         user_info = UserLoginInfo(
@@ -321,6 +467,7 @@ class LoginService:
 
     @staticmethod
     def change_password(
+        auth_db: Session,
         admin_db: Session,
         email: str,
         current_password: str,
@@ -328,7 +475,8 @@ class LoginService:
         confirm_password: str
     ) -> ChangePasswordResponse:
         """
-        Change user password in admin_service.usersetup_basic table
+        Change user password
+        Updates password in admin_service.usersetup_basic AND creates/updates auth_users record
         """
         # Validate passwords match
         if new_password != confirm_password:
@@ -343,8 +491,8 @@ class LoginService:
             )
 
         # Get user from admin_service
-        user = LoginService.get_user_from_admin_db(admin_db, email)
-        if not user:
+        admin_user = LoginService.get_user_from_admin_db(admin_db, email)
+        if not admin_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
@@ -356,7 +504,7 @@ class LoginService:
             )
 
         # Verify current password
-        if not verify_password(current_password, user["password_hash"]):
+        if not verify_password(current_password, admin_user["password_hash"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={
@@ -367,8 +515,10 @@ class LoginService:
                 }
             )
 
-        # Update password in admin_service.usersetup_basic
+        # Generate new password hash
         new_hash = get_password_hash(new_password)
+        
+        # Update password in admin_service.usersetup_basic
         update_query = text("""
             UPDATE usersetup_basic
             SET password_hash = :password_hash,
@@ -386,39 +536,72 @@ class LoginService:
         })
         admin_db.commit()
 
+        # Create or update user in auth_users table
+        auth_user = LoginService.get_user_from_auth_db(auth_db, email)
+        
+        if auth_user:
+            # Update existing auth_user password
+            LoginService.update_auth_user_password(auth_db, auth_user, new_hash)
+            logger.info(f"Updated password for existing auth_user: {email}")
+        else:
+            # Create new auth_user (first password change after first login)
+            LoginService.create_auth_user_from_admin_data(auth_db, admin_user, new_hash)
+            logger.info(f"Created new auth_user after first password change: {email}")
+
         # Publish password changed event (async, non-blocking)
-        asyncio.create_task(
-            publish_user_password_changed_event(
-                user_id=user["id"],
-                email=email,
-                changed_by="user",
-                is_first_login=user.get("is_password_change_required", False)
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+            
+            def run_async_task(coro):
+                """Helper to run async task in background"""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(coro)
+                    loop.close()
+                except Exception as e:
+                    logger.warning(f"Background task error: {e}")
+            
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(
+                run_async_task,
+                publish_user_password_changed_event(
+                    user_id=admin_user["id"],
+                    email=email,
+                    changed_by="user",
+                    is_first_login=admin_user.get("is_password_change_required", False)
+                )
             )
-        )
+        except Exception as e:
+            logger.warning(f"Failed to publish user_password_changed event: {e}")
 
         # Publish user data sync event to admin-service (async, non-blocking)
-        asyncio.create_task(
-            publish_user_data_sync_event(
-                user_id=user["id"],
-                email=email,
-                sync_action="password_change",
-                username=user.get("username"),
-                firstname=user.get("firstname"),
-                lastname=user.get("lastname"),
-                employee_id=user.get("employee_id"),
-                phone_number=user.get("phone_number"),
-                status=user.get("status", "active"),
-                department=user.get("department"),
-                division=user.get("division"),
-                job_code=user.get("job_code"),
-                manage_roles=user.get("manage_roles"),
-                default_dept=user.get("default_dept"),
-                reporting_to=user.get("reporting_to"),
-                entities=user.get("entities"),
-                default_entity=user.get("default_entity"),
-                tenant_id=user.get("tenant_id")
+        try:
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(
+                run_async_task,
+                publish_user_data_sync_event(
+                    user_id=admin_user["id"],
+                    email=email,
+                    sync_action="password_change",
+                    username=admin_user.get("username"),
+                    firstname=admin_user.get("firstname"),
+                    lastname=admin_user.get("lastname"),
+                    employee_id=admin_user.get("employee_id"),
+                    phone_number=admin_user.get("phone_number"),
+                    status=admin_user.get("status", "active"),
+                    department=admin_user.get("department"),
+                    division=admin_user.get("division"),
+                    job_code=admin_user.get("job_code"),
+                    manage_roles=admin_user.get("manage_roles"),
+                    default_dept=admin_user.get("default_dept"),
+                    reporting_to=admin_user.get("reporting_to"),
+                    entities=admin_user.get("entities"),
+                    default_entity=admin_user.get("default_entity")
+                )
             )
-        )
+        except Exception as e:
+            logger.warning(f"Failed to publish user_data_sync event: {e}")
 
         return ChangePasswordResponse(
             message="The password is successfully changed. You will logout in 2 sec",
