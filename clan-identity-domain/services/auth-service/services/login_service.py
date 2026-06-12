@@ -594,17 +594,10 @@ class LoginService:
         })
         admin_db.commit()
 
-        # Create or update user in auth_users table
-        auth_user = LoginService.get_user_from_auth_db(db, email)
-        
-        if auth_user:
-            # Update existing auth_user password
-            LoginService.update_auth_user_password(db, auth_user, new_hash)
-            logger.info(f"Updated password for existing auth_user: {email}")
-        else:
-            # Create new auth_user (first password change after first login)
-            LoginService.create_auth_user_from_admin_data(db, admin_user, new_hash)
-            logger.info(f"Created new auth_user after first password change: {email}")
+        # Sync to auth_users is handled by admin-service automatically
+        # When data is posted to usersetup_basic, admin-service syncs to auth_users
+        # via direct database connection (admin-service-postgres → clan-identity-postgres)
+        logger.info(f"Password updated in admin_service for {email}")
 
         # Publish password changed event (async, non-blocking)
         try:
