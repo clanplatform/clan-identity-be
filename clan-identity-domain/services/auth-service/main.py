@@ -8,6 +8,14 @@ from contextlib import asynccontextmanager
 import logging
 
 from core.config import settings
+
+# Configure logging FIRST before using logger
+logging.basicConfig(
+    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 try:
     from database.connection import init_db
 except ImportError:
@@ -18,14 +26,31 @@ except ImportError:
             logger.warning("Database initialization not available")
             pass
 
+# Try to import routers
+login = None
+sync = None
+auth_users = None
+
 try:
-    from app.api.routes.v1 import login
-except ImportError:
-    try:
-        from app.api.routes import login
-    except ImportError:
-        logger.error("Cannot import login routes")
-        login = None
+    from app.api.routes.v1.login import router as login_router
+    login = type('obj', (object,), {'router': login_router})()
+    logger.info("Successfully imported login routes")
+except ImportError as e:
+    logger.error(f"Cannot import login routes: {e}")
+
+try:
+    from app.api.routes.v1.sync import router as sync_router
+    sync = type('obj', (object,), {'router': sync_router})()
+    logger.info("Successfully imported sync routes")
+except ImportError as e:
+    logger.error(f"Cannot import sync routes: {e}")
+
+try:
+    from app.api.routes.v1.auth_users import router as auth_users_router
+    auth_users = type('obj', (object,), {'router': auth_users_router})()
+    logger.info("Successfully imported auth_users routes")
+except ImportError as e:
+    logger.error(f"Cannot import auth_users routes: {e}")
 
 # Try to import Kafka client
 try:
@@ -36,16 +61,9 @@ except ImportError as e:
         from app.events.kafka_client import get_producer, close_producer, KAFKA_ENABLED
         KAFKA_AVAILABLE = True
     except ImportError as e2:
-        logging.warning(f"Kafka client not available: {e}, {e2}")
+        logger.warning(f"Kafka client not available: {e}, {e2}")
         KAFKA_AVAILABLE = False
         KAFKA_ENABLED = False
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -136,6 +154,26 @@ if login and hasattr(login, 'router'):
 else:
     logger.error("Login router not available - API endpoints will not be registered")
 
+if sync and hasattr(sync, 'router'):
+    app.include_router(
+        sync.router,
+        prefix=f"{settings.API_V1_STR}/sync",
+        tags=["Sync"]
+    )
+    logger.info("Sync router registered at /sync")
+else:
+    logger.warning("Sync router not available - sync endpoints will not be registered")
+
+if auth_users and hasattr(auth_users, 'router'):
+    app.include_router(
+        auth_users.router,
+        prefix=f"{settings.API_V1_STR}/auth/users",
+        tags=["Auth", "Sync"]
+    )
+    logger.info("Auth users router registered at /auth/users (admin-service compatible)")
+else:
+    logger.warning("Auth users router not available - admin-service sync endpoint will not be registered")
+
 
 
 @app.get("/")
@@ -173,9 +211,9 @@ async def health_check():
         # Test auth_service database connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        auth_db_status = "healthy"
+        auth_service_status = "healthy"
     except Exception as e:
-        auth_db_status = f"unhealthy: {str(e)}"
+        auth_service_status = f"unhealthy: {str(e)}"
 
     try:
         # Test admin_service database connection
@@ -198,7 +236,7 @@ async def health_check():
 
     return {
         "status": "healthy",
-        "auth_database": auth_db_status,
+        "auth_database": auth_service_status,
         "admin_database": admin_db_status,
         "kafka": kafka_status,
         "service": settings.PROJECT_NAME

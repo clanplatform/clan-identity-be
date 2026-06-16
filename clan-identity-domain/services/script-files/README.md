@@ -1,6 +1,6 @@
 # Auth Database Scripts
 
-Python scripts for managing the auth_db database tables.
+Python scripts for managing the auth_service database tables.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ pip install asyncpg python-dotenv
 ## Available Scripts
 
 ### 1. create_auth_tables.py
-Creates all auth_db tables by executing SQL files in order.
+Creates all auth_service tables by executing SQL files in order.
 
 **Usage:**
 ```bash
@@ -19,7 +19,7 @@ python create_auth_tables.py
 ```
 
 **What it does:**
-- Creates the auth_db database if it doesn't exist
+- Creates the auth_service database if it doesn't exist
 - Executes all SQL files in sequence:
   - 00_init_auth_database.sql (extensions and initialization)
   - 01_create_auth_users_table.sql
@@ -46,7 +46,7 @@ python verify_auth_tables.py
 ### 3. drop_auth_tables.py
 ⚠️ **WARNING: Destructive operation!**
 
-Drops all auth_db tables and their data.
+Drops all auth_service tables and their data.
 
 **Usage:**
 ```bash
@@ -109,7 +109,7 @@ Error: could not connect to server
 
 ### Database Already Exists
 ```
-Database auth_db already exists
+Database auth_service already exists
 ```
 **Solution:** This is normal, script will continue with table creation
 

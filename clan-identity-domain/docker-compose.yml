@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
       POSTGRES_DB: ${POSTGRES_DB:-auth_service}
-      POSTGRES_MULTIPLE_DATABASES: auth_db,user_db,session_db,rbac_db,oauth_db,auth_service,user_service,session_service,rbac_service,oauth_service
+      POSTGRES_MULTIPLE_DATABASES: auth_service,user_service,session_service,rbac_service,oauth_service
     ports:
       - "5433:5432"
     volumes:

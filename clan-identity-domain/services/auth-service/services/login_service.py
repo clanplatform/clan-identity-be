@@ -48,6 +48,12 @@ from core.security import (
 )
 from core.config import settings
 
+# Import sync service
+try:
+    from services.sync_service import SyncService
+except ImportError:
+    from app.services.sync_service import SyncService
+
 # Import event publishers
 try:
     from events.producers.auth_events import (
@@ -87,7 +93,7 @@ class LoginService:
     """
 
     @staticmethod
-    def get_user_from_auth_db(db: Session, email: str) -> Optional[AuthUser]:
+    def get_user_from_auth_service(db: Session, email: str) -> Optional[AuthUser]:
         """
         Get user from auth_users table by email
         Returns AuthUser ORM object or None
@@ -276,7 +282,7 @@ class LoginService:
         Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
-        auth_user = LoginService.get_user_from_auth_db(db, email)
+        auth_user = LoginService.get_user_from_auth_service(db, email)
         
         if auth_user:
             # User exists in auth_users - authenticate locally
@@ -315,7 +321,7 @@ class LoginService:
                 "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
-                "source": "auth_db"  # Mark source for tracking
+                "source": "auth_service"  # Mark source for tracking
             }
         
         # Fallback: Try admin_service.usersetup_basic (first-time login)
@@ -343,6 +349,7 @@ class LoginService:
         """
         Login user and generate tokens
         - Authenticates from auth_users table (if exists) or admin_service.usersetup_basic (first login)
+        - Automatically syncs latest user data from admin_service to auth_users on every login
         - Stores session in auth_service database
         - Returns 403 if password change is required
         """
@@ -360,6 +367,25 @@ class LoginService:
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        
+        # AUTOMATIC SYNC: Sync latest user data from admin_service to auth_users
+        # This ensures auth_users is always up-to-date with admin_service
+        try:
+            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email)
+            if admin_user:
+                logger.info(f"Auto-syncing user data from admin_service for {login_data.email}")
+                synced_user = SyncService.sync_user_from_admin_data(db, admin_user)
+                if synced_user:
+                    logger.info(f"Successfully synced user {login_data.email} to auth_users")
+                    # Update user dict with synced data to ensure we have latest info
+                    user["id"] = synced_user.id
+                    user["user_setup_id"] = synced_user.user_setup_id
+                else:
+                    logger.warning(f"Failed to sync user {login_data.email}, continuing with existing data")
+        except Exception as e:
+            # Log the error but don't fail login - sync is non-critical
+            logger.warning(f"Auto-sync failed for {login_data.email}: {e}")
+            logger.exception("Sync exception (non-critical):")
 
         # Check if user is active
         if user["status"] != "active":
@@ -594,10 +620,22 @@ class LoginService:
         })
         admin_db.commit()
 
-        # Sync to auth_users is handled by admin-service automatically
-        # When data is posted to usersetup_basic, admin-service syncs to auth_users
-        # via direct database connection (admin-service-postgres → clan-identity-postgres)
         logger.info(f"Password updated in admin_service for {email}")
+        
+        # AUTOMATIC SYNC: Sync updated user data to auth_users after password change
+        try:
+            logger.info(f"Auto-syncing user data after password change for {email}")
+            updated_admin_user = LoginService.get_user_from_admin_db(admin_db, email)
+            if updated_admin_user:
+                synced_user = SyncService.sync_user_from_admin_data(db, updated_admin_user)
+                if synced_user:
+                    logger.info(f"Successfully synced user {email} to auth_users after password change")
+                else:
+                    logger.warning(f"Failed to sync user {email} after password change")
+        except Exception as e:
+            # Log the error but don't fail password change - sync is non-critical
+            logger.warning(f"Auto-sync failed after password change for {email}: {e}")
+            logger.exception("Sync exception (non-critical):")
 
         # Publish password changed event (async, non-blocking)
         try:

@@ -44,6 +44,10 @@ router = APIRouter()
     2. **Password change required**: Returns 403 with message "change password"
        - User must call `/change-password` endpoint
        - After password change, call `/after-change-password-login` to get tokens
+    
+    **Automatic Sync:**
+    - On every login, syncs latest user data from admin_service.usersetup_basic to auth_users
+    - Ensures auth_users table is always up-to-date with admin_service
     """,
     tags=["Authentication"]
 )
@@ -58,6 +62,7 @@ def login(
     
     - Authenticates user from admin_service.usersetup_basic table (first login)
     - Or from local auth_users table (subsequent logins)
+    - Automatically syncs latest user data from admin_service to auth_users on every login
     - If password change required, returns 403
     - Otherwise stores session and returns JWT tokens
     """
@@ -65,7 +70,7 @@ def login(
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent", "")
 
-    # Delegate to service layer
+    # Delegate to service layer (includes automatic sync)
     return LoginService.login(
         db=db,
         admin_db=admin_db,

@@ -1,10 +1,10 @@
 # Auth Database SQL Files
 
-SQL scripts for creating and managing auth_db database schema.
+SQL scripts for creating and managing auth_service database schema.
 
-## Database: auth_db
+## Database: auth_service
 
-The auth_db database is part of the auth-service microservice and stores authentication-related data.
+The auth_service database is part of the auth-service microservice and stores authentication-related data.
 
 ## Tables
 
@@ -95,7 +95,7 @@ Execute SQL files in this exact order:
 
 ```bash
 # Connect to PostgreSQL
-psql -U clan_user -d auth_db
+psql -U clan_user -d auth_service
 
 # Execute files in order
 \i 00_init_auth_database.sql
@@ -117,10 +117,10 @@ python create_auth_tables.py
 ### Method 3: Direct psql Command
 
 ```bash
-psql -U clan_user -d auth_db -f 00_init_auth_database.sql
-psql -U clan_user -d auth_db -f 01_create_auth_users_table.sql
-psql -U clan_user -d auth_db -f 02_create_login_attempts_table.sql
-psql -U clan_user -d auth_db -f 03_create_sessions_table.sql
+psql -U clan_user -d auth_service -f 00_init_auth_database.sql
+psql -U clan_user -d auth_service -f 01_create_auth_users_table.sql
+psql -U clan_user -d auth_service -f 02_create_login_attempts_table.sql
+psql -U clan_user -d auth_service -f 03_create_sessions_table.sql
 ```
 
 ### Method 4: Docker
@@ -130,7 +130,7 @@ psql -U clan_user -d auth_db -f 03_create_sessions_table.sql
 docker cp . clan-identity-postgres:/tmp/sql-files/
 
 # Execute in container
-docker exec -it clan-identity-postgres psql -U clan_user -d auth_db -f /tmp/sql-files/00_init_auth_database.sql
+docker exec -it clan-identity-postgres psql -U clan_user -d auth_service -f /tmp/sql-files/00_init_auth_database.sql
 ```
 
 ## Important Notes
