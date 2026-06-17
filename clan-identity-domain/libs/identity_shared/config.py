@@ -48,3 +48,14 @@ class BaseServiceConfig(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Get CORS origins as list."""
         return [origin.strip() for origin in self.allowed_origins.split(",")]
+    
+    # Encryption settings
+    payload_encryption_enabled: bool = False
+    payload_encryption_key: Optional[str] = None
+    encryption_algorithm: str = "AES-256-GCM"
+    encryption_exclude_paths: str = "/health,/,/docs,/redoc,/openapi.json"
+    
+    @property
+    def encryption_excluded_paths(self) -> list[str]:
+        """Get encryption excluded paths as list."""
+        return [path.strip() for path in self.encryption_exclude_paths.split(",")]

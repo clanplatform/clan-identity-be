@@ -1,0 +1,13 @@
+# Encryption Dependencies for API Endpoint Encryption
+# Install with: pip install -r requirements-encryption.txt
+
+# Core encryption library with AES-GCM support
+cryptography>=41.0.0
+
+# FastAPI and Starlette (likely already installed)
+fastapi>=0.104.0
+starlette>=0.27.0
+
+# Pydantic for configuration (likely already installed)
+pydantic>=2.0.0
+pydantic-settings>=2.0.0

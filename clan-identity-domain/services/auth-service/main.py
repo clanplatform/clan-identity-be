@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from core.config import settings
 
@@ -51,6 +52,40 @@ try:
     logger.info("Successfully imported auth_users routes")
 except ImportError as e:
     logger.error(f"Cannot import auth_users routes: {e}")
+
+# Import encryption components
+encryption_manager = None
+if settings.PAYLOAD_ENCRYPTION_ENABLED:
+    try:
+        import sys
+        # Add libs path to Python path
+        libs_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "libs"))
+        if libs_path not in sys.path:
+            sys.path.insert(0, libs_path)
+        
+        from identity_shared.encryption import create_encryption_from_env
+        from identity_shared.encryption_middleware import setup_encryption_middleware
+        
+        # Create encryption manager with service-specific keys
+        encryption_manager = create_encryption_from_env(
+            default_key_var="PAYLOAD_ENCRYPTION_KEY",
+            service_keys={
+                "auth": "AUTH_SERVICE_ENCRYPTION_KEY",
+                "default": "PAYLOAD_ENCRYPTION_KEY"
+            }
+        )
+        
+        if encryption_manager:
+            logger.info("✓ Encryption manager initialized successfully")
+        else:
+            logger.warning("⚠ Encryption enabled but no keys configured")
+            
+    except ImportError as e:
+        logger.error(f"Failed to import encryption modules: {e}")
+    except Exception as e:
+        logger.error(f"Failed to initialize encryption: {e}")
+else:
+    logger.info("Encryption is disabled (PAYLOAD_ENCRYPTION_ENABLED=false)")
 
 # Try to import Kafka client
 try:
@@ -143,6 +178,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add encryption middleware (must be added after CORS)
+if settings.PAYLOAD_ENCRYPTION_ENABLED and encryption_manager:
+    try:
+        from identity_shared.encryption_middleware import setup_encryption_middleware
+        
+        setup_encryption_middleware(
+            app=app,
+            encryption_manager=encryption_manager,
+            config={
+                "enabled": True,
+                "exclude_paths": settings.ENCRYPTION_EXCLUDED_PATHS,
+                "service_name": "auth",
+                "require_encryption": settings.ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS
+            }
+        )
+        logger.info("✓ Encryption middleware enabled for production")
+    except Exception as e:
+        logger.error(f"Failed to setup encryption middleware: {e}")
+else:
+    if settings.PAYLOAD_ENCRYPTION_ENABLED:
+        logger.warning("⚠ Encryption enabled but middleware not configured")
 
 
 # Include routers

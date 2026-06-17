@@ -135,6 +135,31 @@ class Settings(BaseSettings):
     KAFKA_CONSUMER_GROUP: str = os.getenv("KAFKA_CONSUMER_GROUP", "auth-service")
     KAFKA_ENABLED: bool = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
 
+    # Encryption settings for request/response payload
+    PAYLOAD_ENCRYPTION_ENABLED: bool = os.getenv("PAYLOAD_ENCRYPTION_ENABLED", "false").lower() == "true"
+    PAYLOAD_ENCRYPTION_KEY: Optional[str] = os.getenv("PAYLOAD_ENCRYPTION_KEY")
+    AUTH_SERVICE_ENCRYPTION_KEY: Optional[str] = os.getenv("AUTH_SERVICE_ENCRYPTION_KEY")
+    ENCRYPTION_ALGORITHM: str = os.getenv("ENCRYPTION_ALGORITHM", "AES-256-GCM")
+    ENCRYPTION_EXCLUDE_PATHS: str = os.getenv(
+        "ENCRYPTION_EXCLUDE_PATHS",
+        "/health,/,/api/v1/docs,/api/v1/openapi.json,/api/v1/redoc"
+    )
+    ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS: bool = os.getenv(
+        "ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS", "false"
+    ).lower() == "true"
+
+    @computed_field
+    @property
+    def ENCRYPTION_KEY(self) -> Optional[str]:
+        """Get encryption key (service-specific or default)"""
+        return self.AUTH_SERVICE_ENCRYPTION_KEY or self.PAYLOAD_ENCRYPTION_KEY
+
+    @computed_field
+    @property
+    def ENCRYPTION_EXCLUDED_PATHS(self) -> List[str]:
+        """Get list of paths excluded from encryption"""
+        return [path.strip() for path in self.ENCRYPTION_EXCLUDE_PATHS.split(",")]
+
     model_config = {
         "case_sensitive": True,
         "env_file": ".env",
