@@ -1,0 +1,612 @@
+# Render Infrastructure-as-Code
+# Two environments: prod (encryption ON) and dev (encryption OFF)
+# Docs: https://render.com/docs/infrastructure-as-code
+
+envVarGroups:
+  # ── Shared prod encryption settings ──────────────────────────────────
+  - name: prod-encryption
+    envVars:
+      - key: PAYLOAD_ENCRYPTION_ENABLED
+        value: "true"
+      - key: ENCRYPTION_ALGORITHM
+        value: AES-256-GCM
+      - key: ENCRYPTION_EXCLUDE_PATHS
+        value: /health,/,/api/v1/docs,/api/v1/openapi.json,/api/v1/redoc
+      - key: ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS
+        value: "true"
+      # Set PAYLOAD_ENCRYPTION_KEY and AUTH/USER/etc _SERVICE_ENCRYPTION_KEY
+      # manually in Render dashboard — never commit real keys
+
+  # ── Shared dev encryption settings (disabled) ────────────────────────
+  - name: dev-encryption
+    envVars:
+      - key: PAYLOAD_ENCRYPTION_ENABLED
+        value: "false"
+      - key: ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS
+        value: "false"
+
+# ════════════════════════════════════════════════════════════════════════
+# DATABASES
+# ════════════════════════════════════════════════════════════════════════
+databases:
+  - name: clan-identity-db-prod
+    databaseName: clan_identity
+    user: clan_prod
+    plan: starter
+    region: singapore
+
+  - name: clan-identity-db-dev
+    databaseName: clan_identity
+    user: clan_dev
+    plan: free
+    region: singapore
+
+# ════════════════════════════════════════════════════════════════════════
+# SERVICES
+# ════════════════════════════════════════════════════════════════════════
+services:
+
+  # ──────────────────────────────────────────────────────────────────────
+  # REDIS
+  # ──────────────────────────────────────────────────────────────────────
+  - type: redis
+    name: clan-identity-redis-prod
+    plan: starter
+    region: singapore
+    maxmemoryPolicy: allkeys-lru
+
+  - type: redis
+    name: clan-identity-redis-dev
+    plan: free
+    region: singapore
+    maxmemoryPolicy: allkeys-lru
+
+  # ──────────────────────────────────────────────────────────────────────
+  # AUTH SERVICE — PRODUCTION  (encryption ON)
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-auth-service-prod
+    env: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: auth-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: password
+      - key: POSTGRES_DB
+        value: auth_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: PAYLOAD_ENCRYPTION_KEY
+        sync: false
+      - key: AUTH_SERVICE_ENCRYPTION_KEY
+        sync: false
+      - fromGroup: prod-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # AUTH SERVICE — DEV  (encryption OFF)
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-auth-service-dev
+    env: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: auth-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: password
+      - key: POSTGRES_DB
+        value: auth_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - fromGroup: dev-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # USER SERVICE — PRODUCTION
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-user-service-prod
+    env: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: user-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: password
+      - key: POSTGRES_DB
+        value: user_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: PAYLOAD_ENCRYPTION_KEY
+        sync: false
+      - key: USER_SERVICE_ENCRYPTION_KEY
+        sync: false
+      - fromGroup: prod-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # USER SERVICE — DEV
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-user-service-dev
+    env: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: user-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: password
+      - key: POSTGRES_DB
+        value: user_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - fromGroup: dev-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # SESSION SERVICE — PRODUCTION
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-session-service-prod
+    env: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: session-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: password
+      - key: POSTGRES_DB
+        value: session_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: PAYLOAD_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_SERVICE_ENCRYPTION_KEY
+        sync: false
+      - fromGroup: prod-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # SESSION SERVICE — DEV
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-session-service-dev
+    env: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: session-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: password
+      - key: POSTGRES_DB
+        value: session_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - fromGroup: dev-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # RBAC SERVICE — PRODUCTION
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-rbac-service-prod
+    env: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: rbac-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: password
+      - key: POSTGRES_DB
+        value: rbac_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: PAYLOAD_ENCRYPTION_KEY
+        sync: false
+      - key: RBAC_SERVICE_ENCRYPTION_KEY
+        sync: false
+      - fromGroup: prod-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # RBAC SERVICE — DEV
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-rbac-service-dev
+    env: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: rbac-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: password
+      - key: POSTGRES_DB
+        value: rbac_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - fromGroup: dev-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # OAUTH SERVICE — PRODUCTION
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-oauth-service-prod
+    env: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: oauth-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-prod
+          property: password
+      - key: POSTGRES_DB
+        value: oauth_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: PAYLOAD_ENCRYPTION_KEY
+        sync: false
+      - key: OAUTH_SERVICE_ENCRYPTION_KEY
+        sync: false
+      - fromGroup: prod-encryption
+
+  # ──────────────────────────────────────────────────────────────────────
+  # OAUTH SERVICE — DEV
+  # ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: clan-oauth-service-dev
+    env: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
+    dockerContext: ./clan-identity-domain
+    buildArgs:
+      - key: SERVICE_NAME
+        value: oauth-service
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: clan-identity-db-dev
+          property: password
+      - key: POSTGRES_DB
+        value: oauth_service
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: port
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - fromGroup: dev-encryption

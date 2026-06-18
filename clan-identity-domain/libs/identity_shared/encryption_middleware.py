@@ -271,9 +271,82 @@ class SelectiveEncryptionMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process with selective encryption"""
-        # Same logic as EncryptionMiddleware but with different path checking
-        # Implementation similar to above
-        return await call_next(request)
+        path = request.url.path
+        should_encrypt = self._should_encrypt(path)
+
+        if should_encrypt and request.method in ["POST", "PUT", "PATCH"]:
+            try:
+                body = await request.body()
+                if body:
+                    try:
+                        body_json = json.loads(body)
+                        if "encrypted_data" in body_json and "nonce" in body_json:
+                            decrypted_data = self.encryption_manager.decrypt(
+                                encrypted_data=body_json["encrypted_data"],
+                                nonce=body_json["nonce"],
+                                service_name=self.service_name,
+                                associated_data=path.encode("utf-8"),
+                            )
+                            decrypted_body = json.dumps(decrypted_data).encode("utf-8")
+
+                            async def receive():
+                                return {"type": "http.request", "body": decrypted_body}
+
+                            request._receive = receive
+                    except json.JSONDecodeError:
+                        pass
+                    except ValueError as e:
+                        logger.error(f"Decryption failed for {path}: {e}")
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content={"error": "decryption_failed", "message": "Failed to decrypt request payload"},
+                        )
+            except Exception as e:
+                logger.error(f"Error processing encrypted request: {e}", exc_info=True)
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={"error": "internal_error", "message": "Error processing request"},
+                )
+
+        response = await call_next(request)
+
+        if should_encrypt and response.status_code < 400:
+            try:
+                response_body = b""
+                async for chunk in response.body_iterator:
+                    response_body += chunk
+
+                if response_body:
+                    try:
+                        response_json = json.loads(response_body)
+                        if "encrypted_data" not in response_json:
+                            encrypted_response = self.encryption_manager.encrypt(
+                                data=response_json,
+                                service_name=self.service_name,
+                                associated_data=path.encode("utf-8"),
+                            )
+                            encrypted_response["encrypted"] = True
+                            return JSONResponse(
+                                content=encrypted_response,
+                                status_code=response.status_code,
+                                headers=dict(response.headers),
+                                media_type="application/json",
+                            )
+                    except json.JSONDecodeError:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Encryption failed for {path}: {e}")
+
+                return Response(
+                    content=response_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
+            except Exception as e:
+                logger.error(f"Error processing response encryption: {e}", exc_info=True)
+
+        return response
 
 
 def setup_encryption_middleware(

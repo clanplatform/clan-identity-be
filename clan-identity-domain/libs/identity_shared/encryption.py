@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict, Optional, Union
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.exceptions import InvalidTag
 import secrets
 import logging
@@ -174,7 +174,7 @@ class PayloadEncryption:
         if salt is None:
             salt = secrets.token_bytes(16)
         
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
