@@ -69,8 +69,8 @@ services:
     env: docker
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: auth-service
@@ -126,8 +126,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: auth-service
@@ -179,8 +179,8 @@ services:
     env: docker
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: user-service
@@ -236,8 +236,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: user-service
@@ -289,8 +289,8 @@ services:
     env: docker
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: session-service
@@ -346,8 +346,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: session-service
@@ -399,8 +399,8 @@ services:
     env: docker
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: rbac-service
@@ -456,8 +456,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: rbac-service
@@ -509,8 +509,8 @@ services:
     env: docker
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: oauth-service
@@ -566,8 +566,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-domain/deploy/Dockerfile
-    dockerContext: ./clan-identity-domain
+    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
+    dockerContext: ./clan-identity-be
     buildArgs:
       - key: SERVICE_NAME
         value: oauth-service
