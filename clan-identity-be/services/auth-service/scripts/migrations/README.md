@@ -1,12 +1,12 @@
 # Auth Service Database Migrations
 
-This directory contains SQL migration scripts for the auth_service database.
+This directory contains SQL migration scripts for the clan_identity database.
 
 ## Migration Files
 
 1. **001_create_auth_users_table.sql** - Creates the auth_users table
    - Stores user authentication information after first password change
-   - Mirrors usersetup_basic structure from admin_service
+   - Mirrors usersetup_basic structure from clan_platform
    - Includes indexes for email, username, employee_id, and status
 
 2. **002_create_login_attempts_table.sql** - Creates the login_attempts table
@@ -38,7 +38,7 @@ python scripts/run_migrations_docker.py
 ### Option 3: Manual execution with psql
 ```bash
 # Connect to database
-psql -h localhost -p 5433 -U postgres -d auth_service
+psql -h localhost -p 5433 -U postgres -d clan_identity
 
 # Run migrations in order
 \i scripts/migrations/001_create_auth_users_table.sql
@@ -58,7 +58,7 @@ Migrations must be run in numerical order:
 ### auth_users
 - Primary user authentication table
 - Stores local credentials after password change
-- No foreign key constraints to admin_service
+- No foreign key constraints to clan_platform
 
 ### login_attempts
 - Security monitoring and audit trail
@@ -88,6 +88,6 @@ DROP TABLE IF EXISTS auth_users CASCADE;
 
 - All tables use UUID as primary keys
 - Timestamps are timezone-aware (TIMESTAMP WITH TIME ZONE)
-- No foreign key constraints to admin_service database
+- No foreign key constraints to clan_platform database
 - Indexes are created for frequently queried columns
 - Updated_at trigger is automatically managed for auth_users

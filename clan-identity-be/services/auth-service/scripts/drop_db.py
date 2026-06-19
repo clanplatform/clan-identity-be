@@ -1,6 +1,6 @@
 """
 Auth Service Database Drop Script
-Drops all tables from auth_service database (USE WITH CAUTION!)
+Drops all tables from clan_identity database (USE WITH CAUTION!)
 """
 import sys
 import os

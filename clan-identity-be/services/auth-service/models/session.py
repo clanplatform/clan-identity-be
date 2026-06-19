@@ -1,7 +1,7 @@
 """
-Session Model for auth_service database
+Session Model for clan_identity database
 Stores user session information for login tracking
-Note: user_id references admin_service.usersetup_basic (no FK constraint)
+Note: user_id references clan_platform.usersetup_basic (no FK constraint)
 """
 import uuid
 from sqlalchemy import Column, String, DateTime, Boolean, Text
@@ -18,13 +18,13 @@ class Session(Base):
     """
     Session table for storing user login sessions
     Tracks active sessions, devices, and session metadata
-    Note: user_id references users in admin_service.usersetup_basic
+    Note: user_id references users in clan_platform.usersetup_basic
     """
     __tablename__ = "sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # User reference (UUID from admin_service.usersetup_basic - no FK constraint)
+    # User reference (UUID from clan_platform.usersetup_basic - no FK constraint)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     
     # Token information

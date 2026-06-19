@@ -2,7 +2,7 @@
 Login Service - Business Logic Layer
 Handles user authentication logic
 AUTHENTICATION FLOW:
-1. First login: Authenticates against admin_service.usersetup_basic table
+1. First login: Authenticates against clan_platform.usersetup_basic table
 2. After password change: Creates user in auth_users table
 3. Subsequent logins: Authenticates from auth_users table
 Stores sessions in user_service database
@@ -86,14 +86,14 @@ class LoginService:
     """
     Service class for handling user authentication business logic
     AUTHENTICATION FLOW:
-    1. First time: Authenticates against admin_service.usersetup_basic table
+    1. First time: Authenticates against clan_platform.usersetup_basic table
     2. After password change: Creates user record in auth_users table
     3. Subsequent logins: Authenticates from auth_users table (faster, local)
     Stores sessions and login attempts in user_service database
     """
 
     @staticmethod
-    def get_user_from_auth_service(db: Session, email: str) -> Optional[AuthUser]:
+    def get_user_from_clan_identity(db: Session, email: str) -> Optional[AuthUser]:
         """
         Get user from auth_users table by email
         Returns AuthUser ORM object or None
@@ -203,14 +203,13 @@ class LoginService:
     @staticmethod
     def get_user_from_admin_db(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
         """
-        Get user from admin_service.usersetup_basic table by email
+        Get user from clan_platform.usersetup_basic table by email
         Returns user data as dictionary
         """
         try:
             query = text("""
                 SELECT
                     ub.id,
-                    ub.user_setup_id,
                     ub.firstname,
                     ub.lastname,
                     ub.employee_id,
@@ -222,6 +221,9 @@ class LoginService:
                     ub.is_password_change,
                     NOT ub.is_password_change as is_password_change_required,
                     ub.status,
+                    ub.start_date,
+                    ub.end_date,
+                    ub.tem_employee,
                     ub.department,
                     ub.division,
                     ub.job_code,
@@ -230,6 +232,8 @@ class LoginService:
                     ub.reporting_to,
                     ub.entities,
                     ub.default_entity,
+                    ub.view,
+                    ub.dashboard_view,
                     ub.created_at,
                     ub.updated_at
                 FROM usersetup_basic ub
@@ -241,7 +245,7 @@ class LoginService:
             if result:
                 return {
                     "id": result.id,
-                    "user_setup_id": result.user_setup_id,
+                    "user_setup_id": result.id,
                     "firstname": result.firstname,
                     "lastname": result.lastname,
                     "employee_id": result.employee_id,
@@ -253,6 +257,9 @@ class LoginService:
                     "is_password_change": result.is_password_change,
                     "is_password_change_required": result.is_password_change_required,
                     "status": result.status,
+                    "start_date": result.start_date,
+                    "end_date": result.end_date,
+                    "tem_employee": result.tem_employee,
                     "department": result.department,
                     "division": result.division,
                     "job_code": result.job_code,
@@ -261,12 +268,14 @@ class LoginService:
                     "reporting_to": result.reporting_to,
                     "entities": result.entities,
                     "default_entity": result.default_entity,
+                    "view": result.view,
+                    "dashboard_view": result.dashboard_view,
                     "created_at": result.created_at,
                     "updated_at": result.updated_at,
                 }
             return None
         except Exception as e:
-            logger.error(f"Error querying admin_service.usersetup_basic table: {e}")
+            logger.error(f"Error querying clan_platform.usersetup_basic table: {e}")
             logger.exception("Full exception:")
             # Rollback to clear any failed transaction state
             try:
@@ -279,10 +288,10 @@ class LoginService:
     def authenticate_user(db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
         """
         Authenticate user by email and password
-        Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
+        Priority: auth_users table → clan_platform.usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
-        auth_user = LoginService.get_user_from_auth_service(db, email)
+        auth_user = LoginService.get_user_from_clan_identity(db, email)
         
         if auth_user:
             # User exists in auth_users - authenticate locally
@@ -321,10 +330,10 @@ class LoginService:
                 "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
-                "source": "auth_service"  # Mark source for tracking
+                "source": "clan_identity"  # Mark source for tracking
             }
         
-        # Fallback: Try admin_service.usersetup_basic (first-time login)
+        # Fallback: Try clan_platform.usersetup_basic (first-time login)
         user = LoginService.get_user_from_admin_db(admin_db, email)
 
         if not user:
@@ -348,16 +357,16 @@ class LoginService:
     ) -> LoginResponse:
         """
         Login user and generate tokens
-        - Authenticates from auth_users table (if exists) or admin_service.usersetup_basic (first login)
-        - Automatically syncs latest user data from admin_service to auth_users on every login
-        - Stores session in auth_service database
+        - Authenticates from auth_users table (if exists) or clan_platform.usersetup_basic (first login)
+        - Automatically syncs latest user data from clan_platform to auth_users on every login
+        - Stores session in clan_identity database
         - Returns 403 if password change is required
         """
-        # Authenticate user (checks auth_users first, then admin_service)
+        # Authenticate user (checks auth_users first, then clan_platform)
         user = LoginService.authenticate_user(db, admin_db, login_data.email, login_data.password)
 
         if not user:
-            # Log failed attempt in auth_service database
+            # Log failed attempt in clan_identity database
             LoginService._log_login_attempt(
                 db, None, login_data.email, client_ip, user_agent, False, "invalid_credentials"
             )
@@ -368,12 +377,12 @@ class LoginService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # AUTOMATIC SYNC: Sync latest user data from admin_service to auth_users
-        # This ensures auth_users is always up-to-date with admin_service
+        # AUTOMATIC SYNC: Sync latest user data from clan_platform to auth_users
+        # This ensures auth_users is always up-to-date with clan_platform
         try:
             admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email)
             if admin_user:
-                logger.info(f"Auto-syncing user data from admin_service for {login_data.email}")
+                logger.info(f"Auto-syncing user data from clan_platform for {login_data.email}")
                 synced_user = SyncService.sync_user_from_admin_data(db, admin_user)
                 if synced_user:
                     logger.info(f"Successfully synced user {login_data.email} to auth_users")
@@ -432,14 +441,14 @@ class LoginService:
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
         refresh_token = create_refresh_token(data=token_data, expires_delta=refresh_token_expires)
 
-        # Create session in auth_service database
+        # Create session in clan_identity database
         session = LoginService._create_session(
             db, user["id"], access_token, refresh_token,
             client_ip, user_agent, login_data.device_fingerprint,
             refresh_token_expires
         )
 
-        # Log successful attempt in auth_service database
+        # Log successful attempt in clan_identity database
         LoginService._log_login_attempt(
             db, user["id"], login_data.email, client_ip, user_agent, True, None
         )
@@ -560,7 +569,7 @@ class LoginService:
     ) -> ChangePasswordResponse:
         """
         Change user password
-        Updates password in admin_service.usersetup_basic AND creates/updates auth_users record
+        Updates password in clan_platform.usersetup_basic AND creates/updates auth_users record
         """
         # Validate passwords match
         if new_password != confirm_password:
@@ -574,7 +583,7 @@ class LoginService:
                 }
             )
 
-        # Get user from admin_service
+        # Get user from clan_platform
         admin_user = LoginService.get_user_from_admin_db(admin_db, email)
         if not admin_user:
             raise HTTPException(
@@ -602,7 +611,7 @@ class LoginService:
         # Generate new password hash
         new_hash = get_password_hash(new_password)
         
-        # Update password in admin_service.usersetup_basic
+        # Update password in clan_platform.usersetup_basic
         update_query = text("""
             UPDATE usersetup_basic
             SET password_hash = :password_hash,
@@ -620,7 +629,7 @@ class LoginService:
         })
         admin_db.commit()
 
-        logger.info(f"Password updated in admin_service for {email}")
+        logger.info(f"Password updated in clan_platform for {email}")
         
         # AUTOMATIC SYNC: Sync updated user data to auth_users after password change
         try:
@@ -707,7 +716,7 @@ class LoginService:
     @staticmethod
     def get_current_user_info(admin_db: Session, user_id: str) -> Dict[str, str]:
         """
-        Get current authenticated user info from admin_service
+        Get current authenticated user info from clan_platform
         """
         query = text("""
             SELECT id, email, username, firstname, lastname, employee_id, status
@@ -765,7 +774,7 @@ class LoginService:
     @staticmethod
     def logout_user(db: Session, user_id: str, refresh_token: Optional[str] = None, all_sessions: bool = False) -> Dict[str, Any]:
         """
-        Logout user - Invalidate user session(s) in auth_service database
+        Logout user - Invalidate user session(s) in clan_identity database
         """
         # TODO: Implement actual session invalidation logic
         # This should:

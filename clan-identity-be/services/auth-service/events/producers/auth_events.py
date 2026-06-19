@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Kafka topics
 AUTH_EVENTS_TOPIC = "auth.events.dev"
 SESSION_EVENTS_TOPIC = "session.events.dev"
-USER_SYNC_TOPIC = "user.sync.admin_service.dev"
+USER_SYNC_TOPIC = "user.sync.clan_platform.dev"
 
 
 async def publish_user_login_event(

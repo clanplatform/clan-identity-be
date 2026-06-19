@@ -97,7 +97,7 @@ services:
           name: clan-identity-db-prod
           property: password
       - key: POSTGRES_DB
-        value: auth_service
+        value: clan_identity
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -114,7 +114,7 @@ services:
         sync: false
       - key: PAYLOAD_ENCRYPTION_KEY
         sync: false
-      - key: AUTH_SERVICE_ENCRYPTION_KEY
+      - key: CLAN_IDENTITY_ENCRYPTION_KEY
         sync: false
       - fromGroup: prod-encryption
 
@@ -154,7 +154,7 @@ services:
           name: clan-identity-db-dev
           property: password
       - key: POSTGRES_DB
-        value: auth_service
+        value: clan_identity
       - key: REDIS_HOST
         fromService:
           type: redis

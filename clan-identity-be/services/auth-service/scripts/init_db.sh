@@ -1,6 +1,6 @@
 #!/bin/bash
 # Auth Service Database Initialization Script (Bash)
-# Creates auth_service database and all required tables
+# Creates clan_identity database and all required tables
 
 set -e  # Exit on error
 
@@ -9,7 +9,7 @@ POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-root}"
-POSTGRES_DB="${POSTGRES_DB:-auth_service}"
+POSTGRES_DB="${POSTGRES_DB:-clan_identity}"
 
 USE_PYTHON=true
 USE_SQL=false
@@ -34,7 +34,7 @@ Options:
     -p, --port <port>       PostgreSQL port (default: 5432)
     -u, --user <user>       PostgreSQL user (default: postgres)
     -w, --password <pass>   PostgreSQL password (default: root)
-    -d, --database <db>     Database name (default: auth_service)
+    -d, --database <db>     Database name (default: clan_identity)
     --python                Use Python script for initialization (default)
     --sql                   Use SQL script for initialization
     --help                  Show this help message

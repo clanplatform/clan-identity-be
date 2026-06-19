@@ -1,7 +1,7 @@
 """
 Auth Service Configuration
-Separate database configuration for auth_service PostgreSQL database
-Also connects to admin_service database for user authentication
+Separate database configuration for clan_identity PostgreSQL database
+Also connects to clan_platform database for user authentication
 """
 import os
 from typing import List, Optional, Union
@@ -50,14 +50,14 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "root")
 
     # Auth Service Database
-    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "auth_service")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "clan_identity")
 
     # Admin Service Database (for user lookup) - Can be in different host/repo
     ADMIN_POSTGRES_HOST: str = os.getenv("ADMIN_POSTGRES_HOST", os.getenv("POSTGRES_HOST", "localhost"))
     ADMIN_POSTGRES_PORT: int = int(os.getenv("ADMIN_POSTGRES_PORT", os.getenv("POSTGRES_PORT", "5432")))
     ADMIN_POSTGRES_USER: str = os.getenv("ADMIN_POSTGRES_USER", os.getenv("POSTGRES_USER", "postgres"))
     ADMIN_POSTGRES_PASSWORD: str = os.getenv("ADMIN_POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "root"))
-    ADMIN_DB: str = os.getenv("ADMIN_DB", "admin_service")
+    ADMIN_DB: str = os.getenv("ADMIN_DB", "clan_platform")
 
     @computed_field
     @property
@@ -85,6 +85,9 @@ class Settings(BaseSettings):
 
     # Internal API Key for service-to-service communication
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "internal-api-key-change-in-production")
+
+    # Audit service
+    AUDIT_SERVICE_URL: str = os.getenv("AUDIT_SERVICE_URL", "http://localhost:8007")
 
     # Aliases for backward compatibility
     @property
@@ -138,7 +141,7 @@ class Settings(BaseSettings):
     # Encryption settings for request/response payload
     PAYLOAD_ENCRYPTION_ENABLED: bool = os.getenv("PAYLOAD_ENCRYPTION_ENABLED", "false").lower() == "true"
     PAYLOAD_ENCRYPTION_KEY: Optional[str] = os.getenv("PAYLOAD_ENCRYPTION_KEY")
-    AUTH_SERVICE_ENCRYPTION_KEY: Optional[str] = os.getenv("AUTH_SERVICE_ENCRYPTION_KEY")
+    CLAN_IDENTITY_ENCRYPTION_KEY: Optional[str] = os.getenv("CLAN_IDENTITY_ENCRYPTION_KEY")
     ENCRYPTION_ALGORITHM: str = os.getenv("ENCRYPTION_ALGORITHM", "AES-256-GCM")
     ENCRYPTION_EXCLUDE_PATHS: str = os.getenv(
         "ENCRYPTION_EXCLUDE_PATHS",
@@ -152,7 +155,7 @@ class Settings(BaseSettings):
     @property
     def ENCRYPTION_KEY(self) -> Optional[str]:
         """Get encryption key (service-specific or default)"""
-        return self.AUTH_SERVICE_ENCRYPTION_KEY or self.PAYLOAD_ENCRYPTION_KEY
+        return self.CLAN_IDENTITY_ENCRYPTION_KEY or self.PAYLOAD_ENCRYPTION_KEY
 
     @computed_field
     @property

@@ -1,8 +1,8 @@
 """
 Auth Service Database Configuration
 Connects to:
-1. auth_service PostgreSQL database (for sessions, login_attempts, otps)
-2. admin_service PostgreSQL database (for user authentication from usersetup_basic)
+1. clan_identity PostgreSQL database (for sessions, login_attempts, otps)
+2. clan_platform PostgreSQL database (for user authentication from usersetup_basic)
 """
 from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.ext.declarative import declarative_base
@@ -24,7 +24,7 @@ Base = declarative_base()
 metadata = MetaData()
 
 # ============================================================================
-# Auth Service Database Engine (auth_service DB)
+# Auth Service Database Engine (clan_identity DB)
 # ============================================================================
 if settings.DATABASE_URL.startswith('sqlite'):
     engine = create_engine(
@@ -43,7 +43,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ============================================================================
-# Admin Service Database Engine (admin_service DB - for user lookup)
+# Admin Service Database Engine (clan_platform DB - for user lookup)
 # ============================================================================
 admin_engine = create_engine(
     settings.ADMIN_DATABASE_URL,
@@ -58,7 +58,7 @@ AdminSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=admin_e
 
 def get_db() -> Generator:
     """
-    Dependency to get database session for auth_service database
+    Dependency to get database session for clan_identity database
     """
     db = SessionLocal()
     try:
@@ -69,7 +69,7 @@ def get_db() -> Generator:
 
 def get_admin_db() -> Generator:
     """
-    Dependency to get database session for admin_service database
+    Dependency to get database session for clan_platform database
     Used for reading user data from usersetup_basic table
     """
     db = AdminSessionLocal()
@@ -98,20 +98,20 @@ def init_db():
             logger.warning("Could not import models - tables may not be created")
             return
 
-    logger.info(f"Connecting to auth_service database: {settings.POSTGRES_DB}")
+    logger.info(f"Connecting to clan_identity database: {settings.POSTGRES_DB}")
     logger.info(f"Database URL: {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
 
-    # Create all tables in auth_service database
+    # Create all tables in clan_identity database
     Base.metadata.create_all(bind=engine)
 
     # Log created tables
-    logger.info(f"Tables in auth_service: {list(Base.metadata.tables.keys())}")
+    logger.info(f"Tables in clan_identity: {list(Base.metadata.tables.keys())}")
 
-    # Verify admin_service connection
+    # Verify clan_platform connection
     try:
         with admin_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        logger.info(f"Connected to admin_service database: {settings.ADMIN_DB}")
+        logger.info(f"Connected to clan_platform database: {settings.ADMIN_DB}")
     except Exception as e:
-        logger.warning(f"Could not connect to admin_service database: {e}")
+        logger.warning(f"Could not connect to clan_platform database: {e}")
 

@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "root")
-    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "auth_service")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "clan_identity")
     
     @computed_field
     @property

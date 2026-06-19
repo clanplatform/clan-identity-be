@@ -1,24 +1,24 @@
 # Auth Database SQL Files
 
-SQL scripts for creating and managing auth_service database schema.
+SQL scripts for creating and managing clan_identity database schema.
 
-## Database: auth_service
+## Database: clan_identity
 
-The auth_service database is part of the auth-service microservice and stores authentication-related data.
+The clan_identity database is part of the auth-service microservice and stores authentication-related data.
 
 ## Tables
 
 ### 1. auth_users
-User authentication table (cached from admin_service).
+User authentication table (cached from clan_platform).
 
 **Purpose:** 
 - Stores user credentials and authentication data
-- NOT used for primary authentication (admin_service.usersetup_basic is the source)
+- NOT used for primary authentication (clan_platform.usersetup_basic is the source)
 - Used for caching and potential future features
 
 **Key Columns:**
 - `id`: Primary key (UUID)
-- `admin_user_id`: Reference to admin_service user
+- `admin_user_id`: Reference to clan_platform user
 - `email`, `username`: Login identifiers
 - `password_hash`: Bcrypt hashed password
 - `two_factor_enabled`: 2FA flag
@@ -35,7 +35,7 @@ Login attempt tracking and security monitoring.
 
 **Key Columns:**
 - `id`: Primary key (UUID)
-- `user_id`: Reference to admin_service user
+- `user_id`: Reference to clan_platform user
 - `email_or_username`: Login identifier used
 - `is_successful`: Attempt result
 - `ip_address`: Client IP
@@ -53,7 +53,7 @@ Active session management and tracking.
 
 **Key Columns:**
 - `id`: Primary key (UUID)
-- `user_id`: Reference to admin_service user
+- `user_id`: Reference to clan_platform user
 - `access_token_hash`: Hashed JWT access token
 - `refresh_token_hash`: Hashed refresh token
 - `is_active`, `is_revoked`: Session status
@@ -95,7 +95,7 @@ Execute SQL files in this exact order:
 
 ```bash
 # Connect to PostgreSQL
-psql -U clan_user -d auth_service
+psql -U clan_user -d clan_identity
 
 # Execute files in order
 \i 00_init_auth_database.sql
@@ -117,10 +117,10 @@ python create_auth_tables.py
 ### Method 3: Direct psql Command
 
 ```bash
-psql -U clan_user -d auth_service -f 00_init_auth_database.sql
-psql -U clan_user -d auth_service -f 01_create_auth_users_table.sql
-psql -U clan_user -d auth_service -f 02_create_login_attempts_table.sql
-psql -U clan_user -d auth_service -f 03_create_sessions_table.sql
+psql -U clan_user -d clan_identity -f 00_init_auth_database.sql
+psql -U clan_user -d clan_identity -f 01_create_auth_users_table.sql
+psql -U clan_user -d clan_identity -f 02_create_login_attempts_table.sql
+psql -U clan_user -d clan_identity -f 03_create_sessions_table.sql
 ```
 
 ### Method 4: Docker
@@ -130,22 +130,22 @@ psql -U clan_user -d auth_service -f 03_create_sessions_table.sql
 docker cp . clan-identity-postgres:/tmp/sql-files/
 
 # Execute in container
-docker exec -it clan-identity-postgres psql -U clan_user -d auth_service -f /tmp/sql-files/00_init_auth_database.sql
+docker exec -it clan-identity-postgres psql -U clan_user -d clan_identity -f /tmp/sql-files/00_init_auth_database.sql
 ```
 
 ## Important Notes
 
 ### Foreign Key Constraints
 
-⚠️ **No Foreign Key Constraints to admin_service**
+⚠️ **No Foreign Key Constraints to clan_platform**
 
-The `user_id` columns in `login_attempts` and `sessions` tables reference `admin_service.usersetup_basic.id` but **DO NOT** use foreign key constraints.
+The `user_id` columns in `login_attempts` and `sessions` tables reference `clan_platform.usersetup_basic.id` but **DO NOT** use foreign key constraints.
 
 **Reason:** Cross-service database constraints are avoided in microservices architecture for service independence.
 
 **Implications:**
 - Application must handle referential integrity
-- Orphaned records are possible if users are deleted from admin_service
+- Orphaned records are possible if users are deleted from clan_platform
 - Periodic cleanup jobs recommended
 
 ### Performance Considerations

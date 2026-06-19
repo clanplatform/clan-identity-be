@@ -1,6 +1,6 @@
 """
 Auth Service - Main Application Entry Point
-Handles user authentication with separate auth_service database
+Handles user authentication with separate clan_identity database
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,7 +70,7 @@ if settings.PAYLOAD_ENCRYPTION_ENABLED:
         encryption_manager = create_encryption_from_env(
             default_key_var="PAYLOAD_ENCRYPTION_KEY",
             service_keys={
-                "auth": "AUTH_SERVICE_ENCRYPTION_KEY",
+                "auth": "CLAN_IDENTITY_ENCRYPTION_KEY",
                 "default": "PAYLOAD_ENCRYPTION_KEY"
             }
         )
@@ -157,7 +157,7 @@ app = FastAPI(
     - Login attempt tracking
     
     ## Database
-    Uses separate `auth_service` PostgreSQL database for:
+    Uses separate `clan_identity` PostgreSQL database for:
     - auth_users: User authentication credentials
     - sessions: Active user sessions
     - otps: One-time passwords for verification
@@ -265,15 +265,15 @@ async def health_check():
     from sqlalchemy import text
 
     try:
-        # Test auth_service database connection
+        # Test clan_identity database connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        auth_service_status = "healthy"
+        clan_identity_status = "healthy"
     except Exception as e:
-        auth_service_status = f"unhealthy: {str(e)}"
+        clan_identity_status = f"unhealthy: {str(e)}"
 
     try:
-        # Test admin_service database connection
+        # Test clan_platform database connection
         with admin_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         admin_db_status = "healthy"
@@ -293,7 +293,7 @@ async def health_check():
 
     return {
         "status": "healthy",
-        "auth_database": auth_service_status,
+        "auth_database": clan_identity_status,
         "admin_database": admin_db_status,
         "kafka": kafka_status,
         "service": settings.PROJECT_NAME

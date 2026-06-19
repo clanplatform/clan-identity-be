@@ -1,12 +1,12 @@
 -- Auth Service Database Initialization
--- Creates all tables for auth_service database
+-- Creates all tables for clan_identity database
 -- PostgreSQL 16+
 
 -- ============================================================================
 -- Database Creation (run as superuser if needed)
 -- ============================================================================
--- CREATE DATABASE auth_service
---     WITH 
+-- CREATE DATABASE clan_identity
+--     WITH
 --     OWNER = postgres
 --     ENCODING = 'UTF8'
 --     LC_COLLATE = 'en_US.utf8'
@@ -14,8 +14,8 @@
 --     TABLESPACE = pg_default
 --     CONNECTION LIMIT = -1;
 
--- Connect to auth_service database before running below
--- \c auth_service
+-- Connect to clan_identity database before running below
+-- \c clan_identity
 
 -- ============================================================================
 -- Enable UUID extension
@@ -24,13 +24,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================================
 -- Table: auth_users
--- Stores authenticated user data (mirrors admin_service.usersetup_basic)
+-- Stores authenticated user data (mirrors clan_platform.usersetup_basic)
 -- Used for local authentication after first password change
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS auth_users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     
-    -- Reference to admin_service user
+    -- Reference to clan_platform user
     user_setup_id UUID UNIQUE,
     
     -- Personal Information
@@ -240,19 +240,19 @@ CREATE TRIGGER update_sessions_updated_at
 -- ============================================================================
 -- Comments for Documentation
 -- ============================================================================
-COMMENT ON TABLE auth_users IS 'Authenticated users - mirrors admin_service.usersetup_basic for local authentication';
+COMMENT ON TABLE auth_users IS 'Authenticated users - mirrors clan_platform.usersetup_basic for local authentication';
 COMMENT ON TABLE sessions IS 'User sessions and JWT tokens for authentication management';
 COMMENT ON TABLE login_attempts IS 'Login attempt tracking for security monitoring and rate limiting';
 
-COMMENT ON COLUMN auth_users.user_setup_id IS 'Reference to admin_service.usersetup_basic.id (no FK constraint for cross-database reference)';
+COMMENT ON COLUMN auth_users.user_setup_id IS 'Reference to clan_platform.usersetup_basic.id (no FK constraint for cross-database reference)';
 COMMENT ON COLUMN auth_users.is_password_change IS 'FALSE means first login, password change required';
-COMMENT ON COLUMN sessions.user_id IS 'Reference to user ID (can be from auth_users or admin_service)';
+COMMENT ON COLUMN sessions.user_id IS 'Reference to user ID (can be from auth_users or clan_platform)';
 COMMENT ON COLUMN login_attempts.user_id IS 'User ID if identified, NULL for failed username/email attempts';
 COMMENT ON COLUMN login_attempts.attempt_type IS 'Type of login attempt: password, otp, 2fa, sso';
 
 -- ============================================================================
 -- Grant Permissions (adjust as needed for your environment)
 -- ============================================================================
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO auth_service_user;
--- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO auth_service_user;
--- GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO auth_service_user;
+-- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO clan_identity_user;
+-- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO clan_identity_user;
+-- GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO clan_identity_user;

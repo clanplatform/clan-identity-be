@@ -1,6 +1,6 @@
 """
 Sync Schemas - Data Transfer Objects for User Synchronization
-Schemas for syncing users between admin_service and auth_service
+Schemas for syncing users between clan_platform and clan_identity
 """
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, List
@@ -10,14 +10,14 @@ from datetime import datetime, date
 
 class UserSyncRequest(BaseModel):
     """
-    Schema for syncing a single user from admin_service to auth_service
+    Schema for syncing a single user from clan_platform to clan_identity
     Contains all fields from usersetup_basic table
     """
     # Primary ID
-    id: UUID = Field(..., description="User ID from admin_service.usersetup_basic (primary key)")
+    id: UUID = Field(..., description="User ID from clan_platform.usersetup_basic (primary key)")
     
-    # Reference ID from admin_service (kept for compatibility)
-    user_setup_id: UUID = Field(..., description="User ID from admin_service.usersetup_basic")
+    # Reference ID from clan_platform (kept for compatibility)
+    user_setup_id: UUID = Field(..., description="User ID from clan_platform.usersetup_basic")
     
     # Personal Information
     firstname: str = Field(..., min_length=1, max_length=100)
@@ -28,7 +28,7 @@ class UserSyncRequest(BaseModel):
     phone_number: Optional[str] = Field(None, max_length=20)
     
     # Authentication
-    password_hash: str = Field(..., description="Hashed password from admin_service")
+    password_hash: str = Field(..., description="Hashed password from clan_platform")
     password_changed: Optional[datetime] = None
     is_password_change: bool = Field(default=False, description="Whether password has been changed from default")
     
@@ -80,7 +80,7 @@ class UserSyncRequest(BaseModel):
 class UserSyncResponse(BaseModel):
     """Response schema for user sync operation"""
     message: str
-    user_id: UUID = Field(..., description="Auth service user ID (auth_users.id)")
+    user_id: UUID = Field(..., description="clan_identity user ID (auth_users.id)")
     user_setup_id: UUID = Field(..., description="Admin service user ID (usersetup_basic.id)")
     email: EmailStr
     synced_at: datetime
@@ -130,8 +130,8 @@ class BulkUserSyncResponse(BaseModel):
 
 
 class UserDeleteSyncRequest(BaseModel):
-    """Schema for deleting user from auth_service"""
-    user_setup_id: UUID = Field(..., description="User ID from admin_service")
+    """Schema for deleting user from clan_identity"""
+    user_setup_id: UUID = Field(..., description="User ID from clan_platform")
     email: EmailStr = Field(..., description="Email for validation")
 
     class Config:
@@ -153,8 +153,8 @@ class UserDeleteSyncResponse(BaseModel):
 
 class SyncStatusResponse(BaseModel):
     """Response schema for sync status check"""
-    is_synced: bool = Field(..., description="Whether user is synced to auth_service")
-    user_id: Optional[UUID] = Field(None, description="Auth service user ID if synced")
+    is_synced: bool = Field(..., description="Whether user is synced to clan_identity")
+    user_id: Optional[UUID] = Field(None, description="clan_identity user ID if synced")
     user_setup_id: Optional[UUID] = Field(None, description="Admin service user ID")
     email: Optional[EmailStr] = Field(None, description="User email if synced")
     last_synced_at: Optional[datetime] = Field(None, description="Last sync timestamp (updated_at)")

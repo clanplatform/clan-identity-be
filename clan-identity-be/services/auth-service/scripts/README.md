@@ -23,7 +23,7 @@ POSTGRES_HOST=localhost POSTGRES_PORT=5432 python scripts/init_db.py
 .\init_db.ps1
 
 # With custom settings
-.\init_db.ps1 -Host localhost -Port 5432 -User postgres -Password root -Database auth_service
+.\init_db.ps1 -Host localhost -Port 5432 -User postgres -Password root -Database clan_identity
 
 # Using SQL script instead of Python
 .\init_db.ps1 -UseSQL
@@ -38,7 +38,7 @@ chmod +x scripts/init_db.sh
 ./scripts/init_db.sh
 
 # With custom settings
-./scripts/init_db.sh -h localhost -p 5432 -u postgres -w root -d auth_service
+./scripts/init_db.sh -h localhost -p 5432 -u postgres -w root -d clan_identity
 
 # Using SQL script
 ./scripts/init_db.sh --sql
@@ -119,7 +119,7 @@ python scripts/drop_db.py --full --force
 The auth service creates three main tables:
 
 ### 1. `auth_users`
-Stores authenticated user data (mirrors admin_service.usersetup_basic)
+Stores authenticated user data (mirrors clan_platform.usersetup_basic)
 
 **Key Columns:**
 - `id` - Primary key (UUID)
@@ -166,14 +166,14 @@ POSTGRES_HOST=localhost          # Default: localhost
 POSTGRES_PORT=5432              # Default: 5432
 POSTGRES_USER=postgres          # Default: postgres
 POSTGRES_PASSWORD=root          # Default: root
-POSTGRES_DB=auth_service        # Default: auth_service
+POSTGRES_DB=clan_identity        # Default: clan_identity
 
 # Admin Service Database (for user authentication)
 ADMIN_POSTGRES_HOST=localhost   # Can be different host
 ADMIN_POSTGRES_PORT=5432
 ADMIN_POSTGRES_USER=postgres
 ADMIN_POSTGRES_PASSWORD=root
-ADMIN_DB=admin_service
+ADMIN_DB=clan_platform
 ```
 
 ### Using .env File
@@ -185,7 +185,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=root
-POSTGRES_DB=auth_service
+POSTGRES_DB=clan_identity
 ```
 
 ## Verification
@@ -194,10 +194,10 @@ After initialization, verify the setup:
 
 ```bash
 # Check if database exists
-psql -h localhost -p 5432 -U postgres -l | grep auth_service
+psql -h localhost -p 5432 -U postgres -l | grep clan_identity
 
 # Check tables
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\dt"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\dt"
 
 # Expected output:
 #             List of relations
@@ -208,12 +208,12 @@ psql -h localhost -p 5432 -U postgres -d auth_service -c "\dt"
 #  public | sessions        | table | postgres
 
 # Check table structure
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\d auth_users"
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\d sessions"
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\d login_attempts"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\d auth_users"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\d sessions"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\d login_attempts"
 
 # Check indexes
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\di"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\di"
 ```
 
 ## Troubleshooting
@@ -310,13 +310,13 @@ Create Python scripts similar to `init_db.py` for each migration.
 1. **Always Backup First**
    ```bash
    # Full database backup
-   pg_dump -h host -U user -d auth_service > backup_$(date +%Y%m%d_%H%M%S).sql
+   pg_dump -h host -U user -d clan_identity > backup_$(date +%Y%m%d_%H%M%S).sql
    
    # Schema only
-   pg_dump -h host -U user -d auth_service --schema-only > schema_backup.sql
+   pg_dump -h host -U user -d clan_identity --schema-only > schema_backup.sql
    
    # Data only
-   pg_dump -h host -U user -d auth_service --data-only > data_backup.sql
+   pg_dump -h host -U user -d clan_identity --data-only > data_backup.sql
    ```
 
 2. **Test in Staging First**

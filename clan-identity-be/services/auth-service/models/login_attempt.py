@@ -1,7 +1,7 @@
 """
-Login Attempt Model for auth_service database
+Login Attempt Model for clan_identity database
 Tracks login attempts for security and rate limiting
-Note: user_id references admin_service.usersetup_basic (no FK constraint)
+Note: user_id references clan_platform.usersetup_basic (no FK constraint)
 """
 import uuid
 from sqlalchemy import Column, String, DateTime, Boolean, Text
@@ -18,13 +18,13 @@ class LoginAttempt(Base):
     """
     Login Attempt table for tracking all login attempts
     Used for security monitoring, rate limiting, and audit
-    Note: user_id references users in admin_service.usersetup_basic
+    Note: user_id references users in clan_platform.usersetup_basic
     """
     __tablename__ = "login_attempts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # User reference (UUID from admin_service.usersetup_basic - no FK constraint)
+    # User reference (UUID from clan_platform.usersetup_basic - no FK constraint)
     user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     
     # Attempt details

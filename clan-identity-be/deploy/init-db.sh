@@ -39,7 +39,7 @@ if [ -n "${POSTGRES_MULTIPLE_DATABASES:-}" ]; then
     echo ""
     echo "✅ All databases initialized successfully!"
     echo "📊 Available databases:"
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "\l" | grep -E "auth_service|user_service|session_service|rbac_service|oauth_service" || true
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "\l" | grep -E "clan_identity|user_service|session_service|rbac_service|oauth_service" || true
 else
     echo "⚠️  POSTGRES_MULTIPLE_DATABASES not set, skipping additional database creation"
 fi

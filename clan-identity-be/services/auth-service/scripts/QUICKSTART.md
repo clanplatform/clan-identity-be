@@ -52,12 +52,12 @@ This will check:
 ### Connection Details (Default)
 - **Host:** localhost
 - **Port:** 5432 (or 5433 for Docker)
-- **Database:** auth_service
+- **Database:** clan_identity
 - **User:** postgres
 - **Password:** root
 
 ### Tables Created
-1. **auth_users** - Authenticated user data (mirrors admin_service)
+1. **auth_users** - Authenticated user data (mirrors clan_platform)
 2. **sessions** - User session and JWT token management
 3. **login_attempts** - Security monitoring and rate limiting
 
@@ -67,17 +67,17 @@ This will check:
 
 ### Check Tables
 ```bash
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\dt"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\dt"
 ```
 
 ### View Table Structure
 ```bash
-psql -h localhost -p 5432 -U postgres -d auth_service -c "\d auth_users"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "\d auth_users"
 ```
 
 ### Count Records
 ```bash
-psql -h localhost -p 5432 -U postgres -d auth_service -c "SELECT 'auth_users' as table, COUNT(*) FROM auth_users UNION SELECT 'sessions', COUNT(*) FROM sessions UNION SELECT 'login_attempts', COUNT(*) FROM login_attempts;"
+psql -h localhost -p 5432 -U postgres -d clan_identity -c "SELECT 'auth_users' as table, COUNT(*) FROM auth_users UNION SELECT 'sessions', COUNT(*) FROM sessions UNION SELECT 'login_attempts', COUNT(*) FROM login_attempts;"
 ```
 
 ### Drop and Recreate
@@ -131,14 +131,14 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=root
-POSTGRES_DB=auth_service
+POSTGRES_DB=clan_identity
 
 # Admin Service Database (for user lookup)
 ADMIN_POSTGRES_HOST=localhost
 ADMIN_POSTGRES_PORT=5432
 ADMIN_POSTGRES_USER=postgres
 ADMIN_POSTGRES_PASSWORD=root
-ADMIN_DB=admin_service
+ADMIN_DB=clan_platform
 ```
 
 ---
@@ -191,5 +191,5 @@ Before deploying to production:
 
 **Backup Command:**
 ```bash
-pg_dump -h localhost -U postgres -d auth_service > backup_$(date +%Y%m%d).sql
+pg_dump -h localhost -U postgres -d clan_identity > backup_$(date +%Y%m%d).sql
 ```

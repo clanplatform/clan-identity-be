@@ -1,6 +1,6 @@
 """
-Auth User Model for auth_service database
-Mirrors the usersetup_basic table structure from admin_service
+Auth User Model for clan_identity database
+Mirrors the usersetup_basic table structure from clan_platform
 Used for local authentication after first password change.
 """
 import uuid
@@ -24,7 +24,7 @@ class AuthUser(Base):
     # Primary Key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
-    # Reference to admin_service user (for linking)
+    # Reference to clan_platform user (for linking)
     user_setup_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
     # Personal Information

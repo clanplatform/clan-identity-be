@@ -1,12 +1,12 @@
 # Auth Service Database Initialization Script (PowerShell)
-# Creates auth_service database and all required tables
+# Creates clan_identity database and all required tables
 
 param(
     [string]$Host = "localhost",
     [int]$Port = 5432,
     [string]$User = "postgres",
     [string]$Password = "root",
-    [string]$Database = "auth_service",
+    [string]$Database = "clan_identity",
     [switch]$UsePython,
     [switch]$UseSQL,
     [switch]$Help
@@ -24,7 +24,7 @@ Options:
     -Port <int>         PostgreSQL port (default: 5432)
     -User <string>      PostgreSQL user (default: postgres)
     -Password <string>  PostgreSQL password (default: root)
-    -Database <string>  Database name (default: auth_service)
+    -Database <string>  Database name (default: clan_identity)
     -UsePython          Use Python script for initialization (default)
     -UseSQL             Use SQL script for initialization
     -Help               Show this help message

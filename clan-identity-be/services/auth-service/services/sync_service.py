@@ -1,6 +1,6 @@
 """
 Sync Service - Business Logic for User Synchronization
-Handles syncing users between admin_service.usersetup_basic and auth_service.auth_users
+Handles syncing users between clan_platform.usersetup_basic and clan_identity.auth_users
 """
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
@@ -25,22 +25,22 @@ logger = logging.getLogger(__name__)
 
 class SyncService:
     """
-    Service class for handling user synchronization between admin_service and auth_service
+    Service class for handling user synchronization between clan_platform and clan_identity
     """
 
     @staticmethod
     def sync_user(db: Session, sync_data: UserSyncRequest) -> Dict[str, Any]:
         """
-        Sync a single user from admin_service to auth_service
-        
+        Sync a single user from clan_platform to clan_identity
+
         **Logic:**
         - If user exists (by user_setup_id), update all fields
         - If user doesn't exist, create new user
         - Returns operation type (created/updated)
-        
+
         Args:
-            db: Database session for auth_service
-            sync_data: User data from admin_service
+            db: Database session for clan_identity
+            sync_data: User data from clan_platform
             
         Returns:
             Dictionary with sync result
@@ -125,11 +125,11 @@ class SyncService:
     @staticmethod
     def delete_user(db: Session, user_setup_id: UUID, email: str) -> Dict[str, Any]:
         """
-        Delete user from auth_service when deleted from admin_service
-        
+        Delete user from clan_identity when deleted from clan_platform
+
         Args:
             db: Database session
-            user_setup_id: User ID from admin_service
+            user_setup_id: User ID from clan_platform
             email: Email for validation
             
         Returns:
@@ -168,11 +168,11 @@ class SyncService:
     @staticmethod
     def check_sync_status(db: Session, user_setup_id: UUID) -> Dict[str, Any]:
         """
-        Check if user is synced to auth_service
-        
+        Check if user is synced to clan_identity
+
         Args:
             db: Database session
-            user_setup_id: User ID from admin_service
+            user_setup_id: User ID from clan_platform
             
         Returns:
             Dictionary with sync status
@@ -212,7 +212,7 @@ class SyncService:
         
         Args:
             db: Database session
-            sync_data: User data from admin_service
+            sync_data: User data from clan_platform
             
         Returns:
             Created AuthUser object
@@ -267,15 +267,15 @@ class SyncService:
         Args:
             db: Database session
             user: Existing AuthUser object
-            sync_data: Updated user data from admin_service
+            sync_data: Updated user data from clan_platform
             
         Returns:
             Updated AuthUser object
         """
-        # Update ID if different (to sync primary keys)
-        if user.id != sync_data.id:
-            user.id = sync_data.id
-        
+        # Update user_setup_id if not yet linked
+        if not user.user_setup_id and sync_data.user_setup_id:
+            user.user_setup_id = sync_data.user_setup_id
+
         # Personal Information
         user.firstname = sync_data.firstname
         user.lastname = sync_data.lastname
@@ -329,12 +329,12 @@ class SyncService:
         admin_user_data: Dict[str, Any]
     ) -> Optional[AuthUser]:
         """
-        Sync user from admin_service data dictionary (used during login)
+        Sync user from clan_platform data dictionary (used during login)
         Converts admin data to UserSyncRequest and syncs
-        
+
         Args:
-            db: Database session for auth_service
-            admin_user_data: User data from admin_service.usersetup_basic
+            db: Database session for clan_identity
+            admin_user_data: User data from clan_platform.usersetup_basic
             
         Returns:
             Synced AuthUser object or None if sync fails

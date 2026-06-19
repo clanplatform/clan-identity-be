@@ -3,7 +3,7 @@
 ## ✅ Database Successfully Created
 
 **Date:** 2026-06-16 12:25:33  
-**Database:** auth_service  
+**Database:** clan_identity  
 **Host:** localhost (Docker: clan-identity-postgres)  
 **Port:** 5433 (Docker internal: 5432)  
 **PostgreSQL Version:** 18.0
@@ -25,7 +25,7 @@
 ## 🔍 Table Details
 
 ### auth_users
-Stores authenticated user data (mirrors admin_service.usersetup_basic)
+Stores authenticated user data (mirrors clan_platform.usersetup_basic)
 
 **Key Features:**
 - UUID primary key
@@ -98,33 +98,33 @@ login_attempts:   0 rows
 ```bash
 Host: localhost
 Port: 5433
-Database: auth_service
+Database: clan_identity
 User: postgres
 Password: root
 
 # Connection string
-postgresql://postgres:root@localhost:5433/auth_service
+postgresql://postgres:root@localhost:5433/clan_identity
 ```
 
 ### From Docker Containers
 ```bash
 Host: postgres
 Port: 5432
-Database: auth_service
+Database: clan_identity
 User: postgres
 Password: root
 
 # Connection string
-postgresql://postgres:root@postgres:5432/auth_service
+postgresql://postgres:root@postgres:5432/clan_identity
 ```
 
 ### Using psql
 ```bash
 # From host
-psql -h localhost -p 5433 -U postgres -d auth_service
+psql -h localhost -p 5433 -U postgres -d clan_identity
 
 # From Docker
-docker-compose exec postgres psql -U postgres -d auth_service
+docker-compose exec postgres psql -U postgres -d clan_identity
 ```
 
 ---
@@ -238,8 +238,8 @@ REINDEX TABLE auth_users;
 ## ⚠️ Important Notes
 
 1. **Admin Service Integration**
-   - The admin_service database is expected to be in a different environment
-   - First-time logins query admin_service.usersetup_basic
+   - The clan_platform database is expected to be in a different environment
+   - First-time logins query clan_platform.usersetup_basic
    - After password change, user data is cached in auth_users
 
 2. **Security**

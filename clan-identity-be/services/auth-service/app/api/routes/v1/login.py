@@ -28,6 +28,9 @@ from services.login_service import LoginService
 # Security utilities
 from core.security import get_current_user_id
 
+# Audit
+from core.audit_client import fire_audit_log
+
 router = APIRouter()
 
 
@@ -44,10 +47,10 @@ router = APIRouter()
     2. **Password change required**: Returns 403 with message "change password"
        - User must call `/change-password` endpoint
        - After password change, call `/after-change-password-login` to get tokens
-    
+
     **Automatic Sync:**
-    - On every login, syncs latest user data from admin_service.usersetup_basic to auth_users
-    - Ensures auth_users table is always up-to-date with admin_service
+    - On every login, syncs latest user data from clan_platform.usersetup_basic to auth_users
+    - Ensures auth_users table is always up-to-date with clan_platform
     """,
     tags=["Authentication"]
 )
@@ -59,19 +62,20 @@ def login(
 ):
     """
     Login endpoint - Authenticate user with email and password
-    
-    - Authenticates user from admin_service.usersetup_basic table (first login)
+
+    - Authenticates user from clan_platform.usersetup_basic table (first login)
     - Or from local auth_users table (subsequent logins)
-    - Automatically syncs latest user data from admin_service to auth_users on every login
+    - Automatically syncs latest user data from clan_platform to auth_users on every login
     - If password change required, returns 403
     - Otherwise stores session and returns JWT tokens
     """
     # Extract client information from request
-    client_ip = request.client.host if request.client else None
+    forwarded = request.headers.get("X-Forwarded-For")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
     user_agent = request.headers.get("user-agent", "")
 
     # Delegate to service layer (includes automatic sync)
-    return LoginService.login(
+    result = LoginService.login(
         db=db,
         admin_db=admin_db,
         login_data=login_data,
@@ -79,32 +83,50 @@ def login(
         user_agent=user_agent
     )
 
+    fire_audit_log(
+        action="LOGIN",
+        object_type="AUTH_USER",
+        object_id=str(result.user.id),
+        user_id=str(result.user.id),
+        session_id=str(result.session_id),
+        ip_address=client_ip,
+        user_agent=user_agent,
+        risk_score="LOW",
+    )
+
+    return result
+
 
 @router.post(
     "/change-password",
     response_model=ChangePasswordResponse,
     status_code=status.HTTP_200_OK,
     summary="Change Password",
-    description="Change password in admin_service.usersetup_basic table and create/update auth_users record.",
+    description="Change password in clan_platform.usersetup_basic table and create/update auth_users record.",
     tags=["Authentication"]
 )
 def change_password(
+    request: Request,
     password_data: ChangePasswordRequest,
     db: Session = Depends(get_db),
     admin_db: Session = Depends(get_admin_db)
 ):
     """
-    Change user password in both admin_service and auth_service databases
-    
+    Change user password in both clan_platform and clan_identity databases
+
     **Flow:**
     - Validates current password
     - Ensures new password matches confirmation
-    - Updates password in admin_service database
-    - Creates/updates user in auth_users table (auth_service)
+    - Updates password in clan_platform database
+    - Creates/updates user in auth_users table (clan_identity)
     - Returns success message with logout timer
     """
+    forwarded = request.headers.get("X-Forwarded-For")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
+    user_agent = request.headers.get("user-agent", "")
+
     # Delegate to service layer
-    return LoginService.change_password(
+    result = LoginService.change_password(
         db=db,
         admin_db=admin_db,
         email=password_data.email,
@@ -113,7 +135,17 @@ def change_password(
         confirm_password=password_data.confirm_password
     )
 
+    fire_audit_log(
+        action="CHANGE_PASSWORD",
+        object_type="AUTH_USER",
+        object_id=password_data.email,
+        user_id=password_data.email,
+        ip_address=client_ip,
+        user_agent=user_agent,
+        risk_score="MEDIUM",
+    )
 
+    return result
 
 
 @router.post(
@@ -125,26 +157,41 @@ def change_password(
     tags=["Authentication"]
 )
 def logout(
+    request: Request,
     logout_data: LogoutRequest = None,
     current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
-    Logout endpoint - Invalidate user session in auth_service database
-    
+    Logout endpoint - Invalidate user session in clan_identity database
+
     **Options:**
     - Single session logout (default)
     - All sessions logout (if all_sessions=true)
     """
+    forwarded = request.headers.get("X-Forwarded-For")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
+    user_agent = request.headers.get("user-agent", "")
+
     # Delegate to service layer
-    return LoginService.logout_user(
+    result = LoginService.logout_user(
         db=db,
         user_id=current_user_id,
         refresh_token=logout_data.refresh_token if logout_data else None,
         all_sessions=logout_data.all_sessions if logout_data else False
     )
 
+    fire_audit_log(
+        action="LOGOUT",
+        object_type="AUTH_USER",
+        object_id=current_user_id,
+        user_id=current_user_id,
+        ip_address=client_ip,
+        user_agent=user_agent,
+        risk_score="LOW",
+    )
 
+    return result
 
 
 @router.post(
@@ -161,7 +208,7 @@ def refresh_token(
 ):
     """
     Refresh access token using refresh token
-    
+
     **Process:**
     1. Validates the refresh token
     2. Extracts user information from token payload
@@ -173,6 +220,5 @@ def refresh_token(
         db=db,
         refresh_token=token_data.refresh_token
     )
-    
-    return RefreshTokenResponse(**result)
 
+    return RefreshTokenResponse(**result)

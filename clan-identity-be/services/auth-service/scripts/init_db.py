@@ -1,6 +1,6 @@
 """
 Auth Service Database Initialization Script
-Creates all tables for auth_service database
+Creates all tables for clan_identity database
 """
 import sys
 import os
