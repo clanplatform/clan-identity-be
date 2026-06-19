@@ -47,17 +47,17 @@ COPY libs /libs
 COPY --chown=appuser:appuser services/${SERVICE_NAME} /app
 
 # Set libs on Python path so identity_shared is always importable
-ENV PYTHONPATH=/libs
+ENV PYTHONPATH=/app:/libs
 
 # Switch to non-root user
 USER appuser
 
-# Health check
+# Health check — uses $PORT so it works on Render (default 10000) and local (8000)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-# Expose port
+# Expose port (Render overrides via $PORT env var)
 EXPOSE 8000
 
-# Run the application — no --reload in production
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application — $PORT is set by Render; fallback to 8000 locally
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --app-dir /app"]
