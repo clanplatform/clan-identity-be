@@ -69,13 +69,10 @@ services:
     env: python
     region: singapore
     plan: starter
-    rootDir: clan-identity-be/services/auth-service
-    buildCommand: pip install -r ../requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r clan-identity-be/services/requirements.txt
+    startCommand: bash start_auth.sh
     healthCheckPath: /health
     envVars:
-      - key: PYTHONPATH
-        value: ../../libs
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
@@ -99,6 +96,14 @@ services:
       - key: POSTGRES_DB
         value: clan_identity
       - key: ADMIN_DB
+        value: clan_platform
+      - key: ADMIN_POSTGRES_HOST
+        sync: false
+      - key: ADMIN_POSTGRES_PORT
+        value: "5432"
+      - key: ADMIN_POSTGRES_USER
+        sync: false
+      - key: ADMIN_POSTGRES_PASSWORD
         sync: false
       - key: REDIS_HOST
         fromService:
@@ -110,6 +115,20 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_DB
+        value: "1"
+      - key: REDIS_ENABLED
+        value: "true"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: KAFKA_ENABLED
+        value: "false"
+      - key: CORS_ORIGINS
+        sync: false
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -128,13 +147,10 @@ services:
     env: python
     region: singapore
     plan: free
-    rootDir: clan-identity-be/services/auth-service
-    buildCommand: pip install -r ../requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r clan-identity-be/services/requirements.txt
+    startCommand: bash start_auth.sh
     healthCheckPath: /health
     envVars:
-      - key: PYTHONPATH
-        value: ../../libs
       - key: ENVIRONMENT
         value: development
       - key: DEBUG
