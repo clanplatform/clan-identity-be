@@ -66,16 +66,16 @@ services:
   # ──────────────────────────────────────────────────────────────────────
   - type: web
     name: clan-auth-service-prod
-    env: docker
+    env: python
     region: singapore
     plan: starter
-    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
-    dockerContext: ./clan-identity-be
-    buildArgs:
-      - key: SERVICE_NAME
-        value: auth-service
+    rootDir: clan-identity-be/services/auth-service
+    buildCommand: pip install -r ../requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHONPATH
+        value: ../../libs
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
@@ -125,16 +125,16 @@ services:
   # ──────────────────────────────────────────────────────────────────────
   - type: web
     name: clan-auth-service-dev
-    env: docker
+    env: python
     region: singapore
     plan: free
-    dockerfilePath: ./clan-identity-be/deploy/Dockerfile
-    dockerContext: ./clan-identity-be
-    buildArgs:
-      - key: SERVICE_NAME
-        value: auth-service
+    rootDir: clan-identity-be/services/auth-service
+    buildCommand: pip install -r ../requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHONPATH
+        value: ../../libs
       - key: ENVIRONMENT
         value: development
       - key: DEBUG
