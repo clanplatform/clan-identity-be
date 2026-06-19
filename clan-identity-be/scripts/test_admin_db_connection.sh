@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test script to verify admin_service database connection from auth-service
+# Test script to verify clan_platform database connection from auth-service
 
 echo "🔍 Testing Admin Service Database Connection..."
 echo "================================================"
@@ -25,16 +25,16 @@ fi
 echo ""
 
 # Test 2: Test connection from auth-service container
-echo "2️⃣  Testing connection from auth-service to admin_service database..."
+echo "2️⃣  Testing connection from auth-service to clan_platform database..."
 if docker exec clan-auth-service psql \
     -h host.docker.internal \
     -U postgres \
-    -d admin_service \
+    -d clan_platform \
     -c "SELECT 1" \
     > /dev/null 2>&1; then
-    echo "   ✅ Successfully connected to admin_service database!"
+    echo "   ✅ Successfully connected to clan_platform database!"
 else
-    echo "   ❌ Failed to connect to admin_service database"
+    echo "   ❌ Failed to connect to clan_platform database"
     echo "   💡 Possible causes:"
     echo "      - admin-service PostgreSQL is not running"
     echo "      - PostgreSQL not exposed on port 5432"
@@ -47,7 +47,7 @@ echo "3️⃣  Checking if usersetup_basic table exists..."
 if docker exec clan-auth-service psql \
     -h host.docker.internal \
     -U postgres \
-    -d admin_service \
+    -d clan_platform \
     -c "\dt usersetup_basic" \
     2>/dev/null | grep -q "usersetup_basic"; then
     
@@ -57,7 +57,7 @@ if docker exec clan-auth-service psql \
     USER_COUNT=$(docker exec clan-auth-service psql \
         -h host.docker.internal \
         -U postgres \
-        -d admin_service \
+        -d clan_platform \
         -t -c "SELECT COUNT(*) FROM usersetup_basic" \
         2>/dev/null | tr -d ' ')
     

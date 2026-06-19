@@ -7,8 +7,8 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: ${POSTGRES_DB:-auth_service}
-      POSTGRES_MULTIPLE_DATABASES: auth_service,user_service,session_service,rbac_service,oauth_service
+      POSTGRES_DB: ${POSTGRES_DB:-clan_identity}
+      POSTGRES_MULTIPLE_DATABASES: clan_identity,user_service,session_service,rbac_service,oauth_service
     ports:
       - "5433:5432"
     volumes:
@@ -57,7 +57,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: auth_service
+      POSTGRES_DB: clan_identity
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
@@ -66,7 +66,7 @@ services:
       ADMIN_POSTGRES_PORT: ${ADMIN_POSTGRES_PORT:-5432}
       ADMIN_POSTGRES_USER: ${ADMIN_POSTGRES_USER:-postgres}
       ADMIN_POSTGRES_PASSWORD: ${ADMIN_POSTGRES_PASSWORD:-root}
-      ADMIN_DB: ${ADMIN_DB:-admin_service}
+      ADMIN_DB: ${ADMIN_DB:-clan_platform}
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8000"
     depends_on:

@@ -50,14 +50,14 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "root")
 
     # Auth Service Database
-    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "auth_service")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "clan_identity")
 
     # Admin Service Database (for user lookup) - Can be in different host/repo
     ADMIN_POSTGRES_HOST: str = os.getenv("ADMIN_POSTGRES_HOST", os.getenv("POSTGRES_HOST", "localhost"))
     ADMIN_POSTGRES_PORT: int = int(os.getenv("ADMIN_POSTGRES_PORT", os.getenv("POSTGRES_PORT", "5432")))
     ADMIN_POSTGRES_USER: str = os.getenv("ADMIN_POSTGRES_USER", os.getenv("POSTGRES_USER", "postgres"))
     ADMIN_POSTGRES_PASSWORD: str = os.getenv("ADMIN_POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "root"))
-    ADMIN_DB: str = os.getenv("ADMIN_DB", "admin_service")
+    ADMIN_DB: str = os.getenv("ADMIN_DB", "clan_platform")
 
     @computed_field
     @property

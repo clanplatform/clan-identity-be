@@ -48,6 +48,14 @@ from core.security import (
 )
 from core.config import settings
 
+try:
+    from database.redis_client import (
+        cache_session, blacklist_token, remove_session, remove_all_user_sessions
+    )
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+
 # Import sync service
 try:
     from services.sync_service import SyncService
@@ -763,21 +771,99 @@ class LoginService:
         }
 
     @staticmethod
-    def logout_user(db: Session, user_id: str, refresh_token: Optional[str] = None, all_sessions: bool = False) -> Dict[str, Any]:
-        """
-        Logout user - Invalidate user session(s) in auth_service database
-        """
-        # TODO: Implement actual session invalidation logic
-        # This should:
-        # 1. Find session(s) by user_id and optionally refresh_token
-        # 2. Mark them as invalid/expired
-        # 3. Return number of sessions revoked
-        
-        sessions_revoked = 1  # Placeholder
-        
+    def logout_user(
+        db: Session,
+        user_id: str,
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        all_sessions: bool = False
+    ) -> Dict[str, Any]:
+        """Revoke session(s) in PostgreSQL and blacklist the access token in Redis."""
+        sessions_revoked = 0
+
+        try:
+            if all_sessions:
+                # Revoke all active sessions for this user in PostgreSQL
+                sessions = (
+                    db.query(UserSession)
+                    .filter(
+                        UserSession.user_id == user_id,
+                        UserSession.is_active == True,
+                        UserSession.is_revoked == False,
+                    )
+                    .all()
+                )
+                for s in sessions:
+                    s.is_active = False
+                    s.is_revoked = True
+                    s.revoked_reason = "logout"
+                    s.revoked_at = datetime.now(timezone.utc)
+                db.commit()
+                sessions_revoked = len(sessions)
+
+                # Remove all sessions from Redis cache
+                if REDIS_AVAILABLE:
+                    remove_all_user_sessions(str(user_id))
+
+            elif refresh_token:
+                refresh_hash = hash_token(refresh_token)
+                session = (
+                    db.query(UserSession)
+                    .filter(
+                        UserSession.user_id == user_id,
+                        UserSession.refresh_token_hash == refresh_hash,
+                        UserSession.is_active == True,
+                        UserSession.is_revoked == False,
+                    )
+                    .first()
+                )
+                if session:
+                    session.is_active = False
+                    session.is_revoked = True
+                    session.revoked_reason = "logout"
+                    session.revoked_at = datetime.now(timezone.utc)
+                    db.commit()
+                    sessions_revoked = 1
+
+                    # Remove from Redis cache
+                    if REDIS_AVAILABLE:
+                        remove_session(str(session.id), str(user_id))
+
+            else:
+                # No refresh token — revoke the most recent active session
+                session = (
+                    db.query(UserSession)
+                    .filter(
+                        UserSession.user_id == user_id,
+                        UserSession.is_active == True,
+                        UserSession.is_revoked == False,
+                    )
+                    .order_by(UserSession.created_at.desc())
+                    .first()
+                )
+                if session:
+                    session.is_active = False
+                    session.is_revoked = True
+                    session.revoked_reason = "logout"
+                    session.revoked_at = datetime.now(timezone.utc)
+                    db.commit()
+                    sessions_revoked = 1
+
+                    if REDIS_AVAILABLE:
+                        remove_session(str(session.id), str(user_id))
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to revoke session(s) for user {user_id}: {e}")
+
+        # Blacklist the current access token so it's immediately invalid
+        if access_token and REDIS_AVAILABLE:
+            access_ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            blacklist_token(hash_token(access_token), ttl=access_ttl)
+
         return {
             "message": "Logged out successfully",
-            "sessions_revoked": sessions_revoked
+            "sessions_revoked": sessions_revoked,
         }
 
     @staticmethod
@@ -805,6 +891,24 @@ class LoginService:
             db.add(session)
             db.commit()
             db.refresh(session)
+
+            # Cache session in Redis for fast lookup
+            if REDIS_AVAILABLE:
+                ttl = int(expires_delta.total_seconds())
+                cache_session(
+                    session_id=str(session.id),
+                    user_id=str(user_id),
+                    data={
+                        "session_id": str(session.id),
+                        "user_id": str(user_id),
+                        "ip_address": ip_address,
+                        "user_agent": user_agent,
+                        "expires_at": session.expires_at.isoformat(),
+                        "is_active": True,
+                    },
+                    ttl=ttl,
+                )
+
             return session
         except Exception as e:
             db.rollback()

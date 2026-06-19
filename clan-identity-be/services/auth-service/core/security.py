@@ -125,6 +125,18 @@ def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Reject tokens that have been explicitly revoked (logout blacklist)
+    try:
+        from database.redis_client import is_token_blacklisted
+        if is_token_blacklisted(hash_token(token)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except ImportError:
+        pass
+
     user_id: str = payload.get("user_id") or payload.get("sub")
     if user_id is None:
         raise HTTPException(

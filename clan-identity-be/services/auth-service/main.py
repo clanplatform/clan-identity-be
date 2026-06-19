@@ -87,6 +87,15 @@ if settings.PAYLOAD_ENCRYPTION_ENABLED:
 else:
     logger.info("Encryption is disabled (PAYLOAD_ENCRYPTION_ENABLED=false)")
 
+# Try to import Redis client
+try:
+    from database.redis_client import get_redis, close_redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    def get_redis(): return None
+    def close_redis(): pass
+
 # Try to import Kafka client
 try:
     from events.kafka_client import get_producer, close_producer, KAFKA_ENABLED
@@ -116,6 +125,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
 
+    # Initialize Redis connection
+    if REDIS_AVAILABLE:
+        r = get_redis()
+        if r:
+            logger.info("Redis initialized successfully")
+        else:
+            logger.warning("Redis unavailable — session cache and token blacklist disabled")
+
     # Initialize Kafka producer
     if KAFKA_AVAILABLE and KAFKA_ENABLED:
         try:
@@ -133,6 +150,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info(f"Shutting down {settings.PROJECT_NAME}...")
+
+    # Close Redis connection
+    if REDIS_AVAILABLE:
+        close_redis()
+        logger.info("Redis connection closed")
 
     # Close Kafka producer
     if KAFKA_AVAILABLE and KAFKA_ENABLED:
@@ -280,6 +302,20 @@ async def health_check():
     except Exception as e:
         admin_db_status = f"unhealthy: {str(e)}"
 
+    # Check Redis status
+    if REDIS_AVAILABLE:
+        try:
+            r = get_redis()
+            if r:
+                r.ping()
+                redis_status = "healthy"
+            else:
+                redis_status = "disabled"
+        except Exception as e:
+            redis_status = f"unhealthy: {str(e)}"
+    else:
+        redis_status = "unavailable"
+
     # Check Kafka status
     if KAFKA_AVAILABLE and KAFKA_ENABLED:
         try:
@@ -295,6 +331,7 @@ async def health_check():
         "status": "healthy",
         "auth_database": auth_service_status,
         "admin_database": admin_db_status,
+        "redis": redis_status,
         "kafka": kafka_status,
         "service": settings.PROJECT_NAME
     }

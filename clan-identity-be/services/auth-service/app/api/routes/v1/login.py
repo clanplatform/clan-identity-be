@@ -4,8 +4,11 @@ Handles HTTP requests and responses for authentication endpoints
 Business logic delegated to LoginService
 """
 from fastapi import APIRouter, Depends, status, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from typing import Dict
+
+_bearer = HTTPBearer(auto_error=False)
 
 # Database dependencies
 try:
@@ -127,19 +130,20 @@ def change_password(
 def logout(
     logout_data: LogoutRequest = None,
     current_user_id: str = Depends(get_current_user_id),
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     db: Session = Depends(get_db)
 ):
     """
     Logout endpoint - Invalidate user session in auth_service database
-    
+
     **Options:**
     - Single session logout (default)
     - All sessions logout (if all_sessions=true)
     """
-    # Delegate to service layer
     return LoginService.logout_user(
         db=db,
         user_id=current_user_id,
+        access_token=credentials.credentials if credentials else None,
         refresh_token=logout_data.refresh_token if logout_data else None,
         all_sessions=logout_data.all_sessions if logout_data else False
     )
