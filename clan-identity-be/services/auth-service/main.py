@@ -100,11 +100,11 @@ except ImportError:
 try:
     from events.kafka_client import get_producer, close_producer, KAFKA_ENABLED
     KAFKA_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     try:
         from app.events.kafka_client import get_producer, close_producer, KAFKA_ENABLED
         KAFKA_AVAILABLE = True
-    except ImportError as e2:
+    except Exception as e2:
         logger.warning(f"Kafka client not available: {e}, {e2}")
         KAFKA_AVAILABLE = False
         KAFKA_ENABLED = False

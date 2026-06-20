@@ -8,10 +8,9 @@ try:
     from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
     from aiokafka.errors import KafkaError
     KAFKA_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     logging.warning(f"Kafka libraries not available: {e}")
     KAFKA_AVAILABLE = False
-    # Create dummy classes for type hints
     class AIOKafkaProducer:
         pass
     class AIOKafkaConsumer:

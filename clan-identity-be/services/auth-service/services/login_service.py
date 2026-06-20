@@ -17,6 +17,8 @@ from uuid import UUID
 import logging
 import asyncio
 
+logger = logging.getLogger(__name__)
+
 # Import models (will need to be created or imported correctly)
 try:
     from models.session import Session as UserSession
@@ -53,7 +55,7 @@ try:
         cache_session, blacklist_token, remove_session, remove_all_user_sessions
     )
     REDIS_AVAILABLE = True
-except ImportError:
+except Exception:
     REDIS_AVAILABLE = False
 
 # Import sync service
@@ -70,8 +72,7 @@ try:
         publish_user_data_sync_event,
         publish_session_created_event
     )
-except ImportError:
-    # Fallback import
+except Exception:
     try:
         from app.events.producers.auth_events import (
             publish_user_login_event,
@@ -79,15 +80,12 @@ except ImportError:
             publish_user_data_sync_event,
             publish_session_created_event
         )
-    except ImportError:
-        # If event publishers not available, create no-op functions
+    except Exception:
         logger.warning("Event publishers not available - events will not be published")
         async def publish_user_login_event(*args, **kwargs): return False
         async def publish_user_password_changed_event(*args, **kwargs): return False
         async def publish_user_data_sync_event(*args, **kwargs): return False
         async def publish_session_created_event(*args, **kwargs): return False
-
-logger = logging.getLogger(__name__)
 
 
 class LoginService:
