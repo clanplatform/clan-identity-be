@@ -108,6 +108,15 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: password
+      - key: KAFKA_ENABLED
+        value: "false"
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: ""
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -165,6 +174,15 @@ services:
           type: redis
           name: clan-identity-redis-dev
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: password
+      - key: KAFKA_ENABLED
+        value: "false"
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: ""
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -218,6 +236,11 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -275,6 +298,11 @@ services:
           type: redis
           name: clan-identity-redis-dev
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -328,6 +356,11 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -385,6 +418,11 @@ services:
           type: redis
           name: clan-identity-redis-dev
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -438,6 +476,11 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -495,6 +538,11 @@ services:
           type: redis
           name: clan-identity-redis-dev
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -548,6 +596,11 @@ services:
           type: redis
           name: clan-identity-redis-prod
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-prod
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
@@ -605,6 +658,11 @@ services:
           type: redis
           name: clan-identity-redis-dev
           property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: clan-identity-redis-dev
+          property: password
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
