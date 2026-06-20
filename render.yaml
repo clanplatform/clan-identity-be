@@ -1,4 +1,4 @@
-# Render Infrastructure-as-Code
+# Render Infrastructure's-as-Code
 # Two environments: prod (encryption ON) and dev (encryption OFF)
 # Docs: https://render.com/docs/infrastructure-as-code
 
