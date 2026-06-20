@@ -46,8 +46,8 @@ COPY libs /libs
 # Copy service code and fix ownership in one layer
 COPY --chown=appuser:appuser services/${SERVICE_NAME} /app
 
-# Set libs on Python path so identity_shared is always importable
-ENV PYTHONPATH=/libs
+# Set libs and app on Python path
+ENV PYTHONPATH=/app:/libs
 
 # Switch to non-root user
 USER appuser
@@ -60,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 8000
 
 # Run the application — no --reload in production
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "/app"]
