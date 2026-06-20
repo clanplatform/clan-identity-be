@@ -37,7 +37,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 
 # Accept build argument for service name
-ARG SERVICE_NAME
+ARG SERVICE_NAME=auth-service
 ENV SERVICE_NAME=${SERVICE_NAME}
 
 # Copy shared libraries
@@ -60,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 8000
 
 # Run the application — no --reload in production
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "/app"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
