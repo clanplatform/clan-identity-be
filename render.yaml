@@ -125,6 +125,9 @@ services:
         sync: false
       - key: AUTH_SERVICE_ENCRYPTION_KEY
         sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false
       - fromGroup: prod-encryption
 
   # ──────────────────────────────────────────────────────────────────────
@@ -186,6 +189,9 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
+        sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
         sync: false
       - fromGroup: dev-encryption
 
@@ -249,6 +255,9 @@ services:
         sync: false
       - key: USER_SERVICE_ENCRYPTION_KEY
         sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false
       - fromGroup: prod-encryption
 
   # ──────────────────────────────────────────────────────────────────────
@@ -306,6 +315,9 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
+        sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
         sync: false
       - fromGroup: dev-encryption
 
@@ -369,6 +381,9 @@ services:
         sync: false
       - key: SESSION_SERVICE_ENCRYPTION_KEY
         sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false
       - fromGroup: prod-encryption
 
   # ──────────────────────────────────────────────────────────────────────
@@ -426,6 +441,9 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
+        sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
         sync: false
       - fromGroup: dev-encryption
 
@@ -489,6 +507,9 @@ services:
         sync: false
       - key: RBAC_SERVICE_ENCRYPTION_KEY
         sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false
       - fromGroup: prod-encryption
 
   # ──────────────────────────────────────────────────────────────────────
@@ -546,6 +567,9 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
+        sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
         sync: false
       - fromGroup: dev-encryption
 
@@ -609,6 +633,9 @@ services:
         sync: false
       - key: OAUTH_SERVICE_ENCRYPTION_KEY
         sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false
       - fromGroup: prod-encryption
 
   # ──────────────────────────────────────────────────────────────────────
@@ -666,5 +693,8 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: INTERNAL_API_KEY
+        sync: false
+      # CORS allowed browser origins (JSON list or CSV) — set in Render dashboard
+      - key: CORS_ORIGINS
         sync: false
       - fromGroup: dev-encryption

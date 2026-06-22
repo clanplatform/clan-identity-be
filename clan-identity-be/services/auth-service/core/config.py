@@ -80,6 +80,20 @@ class Settings(BaseSettings):
     # JWT/Authentication settings
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "auth-service-super-secret-key-change-in-production")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    # RS256 / JWKS — asymmetric signing so the API gateway (Envoy) can validate
+    # tokens at the edge via /.well-known/jwks.json. Active when JWT_ALGORITHM
+    # starts with "RS". iss/aud MUST match the gateway's jwt_issuer/jwt_audience.
+    JWT_ISSUER: str = os.getenv("JWT_ISSUER", "clan-identity")
+    JWT_AUDIENCE: str = os.getenv("JWT_AUDIENCE", "api-gateway")
+    # Optional explicit keys (PEM string or file path). If none are set in dev,
+    # an ephemeral keypair is generated at startup so JWKS works out of the box.
+    JWT_PRIVATE_KEY: str = os.getenv("JWT_PRIVATE_KEY", "")
+    JWT_PUBLIC_KEY: str = os.getenv("JWT_PUBLIC_KEY", "")
+    JWT_PRIVATE_KEY_PATH: str = os.getenv("JWT_PRIVATE_KEY_PATH", "")
+    JWT_PUBLIC_KEY_PATH: str = os.getenv("JWT_PUBLIC_KEY_PATH", "")
+    # Dev fallback: where an auto-generated keypair is cached so all worker
+    # processes share one key (JWKS endpoint and signer must agree).
+    JWT_KEY_CACHE_PATH: str = os.getenv("JWT_KEY_CACHE_PATH", "/tmp/clan_auth_jwt_signing_key.pem")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
@@ -142,7 +156,7 @@ class Settings(BaseSettings):
     ENCRYPTION_ALGORITHM: str = os.getenv("ENCRYPTION_ALGORITHM", "AES-256-GCM")
     ENCRYPTION_EXCLUDE_PATHS: str = os.getenv(
         "ENCRYPTION_EXCLUDE_PATHS",
-        "/health,/,/api/v1/docs,/api/v1/openapi.json,/api/v1/redoc"
+        "/health,/,/.well-known/jwks.json,/api/v1/docs,/api/v1/openapi.json,/api/v1/redoc"
     )
     ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS: bool = os.getenv(
         "ENCRYPTION_REQUIRE_ENCRYPTED_REQUESTS", "false"

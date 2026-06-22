@@ -58,6 +58,9 @@ class AuthUser(Base):
     default_dept = Column(UUID(as_uuid=True), nullable=True)
     reporting_to = Column(UUID(as_uuid=True), nullable=True)
     
+    # Tenant / Client
+    client_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
     # Entity Access
     entities = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
     default_entity = Column(UUID(as_uuid=True), nullable=True)

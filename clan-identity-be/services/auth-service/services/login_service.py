@@ -164,6 +164,8 @@ class LoginService:
                 # View Preferences
                 view=admin_user_data.get("view"),
                 dashboard_view=admin_user_data.get("dashboard_view"),
+                # Tenant
+                client_id=admin_user_data.get("client_id"),
             )
             
             db.add(auth_user)
@@ -237,8 +239,16 @@ class LoginService:
                     ub.entities,
                     ub.default_entity,
                     ub.created_at,
-                    ub.updated_at
+                    ub.updated_at,
+                    ure.assigned_client_id as client_id
                 FROM usersetup_basic ub
+                LEFT JOIN LATERAL (
+                    SELECT assigned_client_id
+                    FROM usersetup_roles_entity
+                    WHERE usersetup_basic_id = ub.id
+                      AND assigned_client_id IS NOT NULL
+                    LIMIT 1
+                ) ure ON true
                 WHERE ub.email = :email
             """)
 
@@ -269,6 +279,7 @@ class LoginService:
                     "default_entity": result.default_entity,
                     "created_at": result.created_at,
                     "updated_at": result.updated_at,
+                    "client_id": result.client_id,
                 }
             return None
         except Exception as e:
@@ -327,6 +338,7 @@ class LoginService:
                 "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
+                "client_id": auth_user.client_id,
                 "source": "auth_service"  # Mark source for tracking
             }
         
@@ -433,6 +445,7 @@ class LoginService:
             "email": user["email"],
             "username": user["username"],
             "user_setup_id": str(user["user_setup_id"]) if user["user_setup_id"] else None,
+            "client_id": str(user["client_id"]) if user.get("client_id") else None,
         }
 
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
@@ -542,7 +555,8 @@ class LoginService:
             employee_id=user["employee_id"],
             status=user["status"],
             roles=user["manage_roles"] or [],
-            admin_user_id=user["user_setup_id"]
+            admin_user_id=user["user_setup_id"],
+            client_id=user.get("client_id"),
         )
 
         return LoginResponse(
@@ -754,7 +768,8 @@ class LoginService:
         token_data_dict = {
             "user_id": payload.get("user_id"),
             "email": payload.get("email"),
-            "username": payload.get("username")
+            "username": payload.get("username"),
+            "client_id": payload.get("client_id"),
         }
 
         access_token = create_access_token(

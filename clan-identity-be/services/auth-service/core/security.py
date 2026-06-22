@@ -53,6 +53,27 @@ def generate_secure_token(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
+def _use_rsa() -> bool:
+    """True when configured to sign/verify with an asymmetric (RS*) algorithm."""
+    return str(settings.JWT_ALGORITHM).upper().startswith("RS")
+
+
+def _sign(to_encode: Dict[str, Any]) -> str:
+    """Encode a JWT: RS256 with the private key + kid (+iss/aud), else HS256 secret."""
+    to_encode.setdefault("iss", settings.JWT_ISSUER)
+    to_encode.setdefault("aud", settings.JWT_AUDIENCE)
+    if _use_rsa():
+        try:
+            from core.jwks import signing_key
+        except ImportError:
+            from app.core.jwks import signing_key
+        private_pem, kid = signing_key()
+        return jwt.encode(
+            to_encode, private_pem, algorithm=settings.JWT_ALGORITHM, headers={"kid": kid}
+        )
+    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
 def create_access_token(
     data: Dict[str, Any],
     expires_delta: Optional[timedelta] = None
@@ -69,7 +90,7 @@ def create_access_token(
         "type": "access",
         "iat": datetime.utcnow()
     })
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    encoded_jwt = _sign(to_encode)
     return encoded_jwt
 
 
@@ -89,14 +110,24 @@ def create_refresh_token(
         "type": "refresh",
         "iat": datetime.utcnow()
     })
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    encoded_jwt = _sign(to_encode)
     return encoded_jwt
 
 
 def verify_token(token: str, token_type: str = "access") -> Optional[Dict[str, Any]]:
     """Verify and decode a JWT token"""
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if _use_rsa():
+            try:
+                from core.jwks import public_pem
+            except ImportError:
+                from app.core.jwks import public_pem
+            payload = jwt.decode(
+                token, public_pem(), algorithms=[settings.JWT_ALGORITHM],
+                issuer=settings.JWT_ISSUER, audience=settings.JWT_AUDIENCE,
+            )
+        else:
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         if payload.get("type") != token_type:
             return None
         return payload

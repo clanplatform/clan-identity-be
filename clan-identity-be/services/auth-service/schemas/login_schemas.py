@@ -27,6 +27,7 @@ class UserLoginInfo(BaseModel):
     status: str = Field(..., description="User status")
     roles: List[UUID] = Field(default=[], description="Assigned role IDs")
     admin_user_id: Optional[UUID] = Field(None, description="Reference to admin service user")
+    client_id: Optional[UUID] = Field(None, description="Tenant / client ID")
 
     class Config:
         from_attributes = True

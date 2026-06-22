@@ -53,6 +53,11 @@ services:
       - ./config/environments/.env.local
     environment:
       SERVICE_NAME: auth-service
+      # RS256 + JWKS so the API gateway (Envoy) can validate tokens at the edge.
+      # Dev: keys auto-generate at startup; iss/aud must match the gateway config.
+      JWT_ALGORITHM: RS256
+      JWT_ISSUER: clan-identity
+      JWT_AUDIENCE: api-gateway
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -76,6 +81,7 @@ services:
         condition: service_healthy
     networks:
       - clan-identity-network
+      - clan-network
     volumes:
       - ./services/auth-service:/app
       - ./libs:/libs
@@ -112,6 +118,7 @@ services:
         condition: service_healthy
     networks:
       - clan-identity-network
+      - clan-network
     volumes:
       - ./services/user-service:/app
       - ./libs:/libs
@@ -146,6 +153,7 @@ services:
         condition: service_healthy
     networks:
       - clan-identity-network
+      - clan-network
     volumes:
       - ./services/session-service:/app
       - ./libs:/libs
@@ -180,6 +188,7 @@ services:
         condition: service_healthy
     networks:
       - clan-identity-network
+      - clan-network
     volumes:
       - ./services/rbac-service:/app
       - ./libs:/libs
@@ -214,6 +223,7 @@ services:
         condition: service_healthy
     networks:
       - clan-identity-network
+      - clan-network
     volumes:
       - ./services/oauth-service:/app
       - ./libs:/libs
@@ -227,3 +237,5 @@ volumes:
 networks:
   clan-identity-network:
     driver: bridge
+  clan-network:
+    external: true

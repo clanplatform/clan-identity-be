@@ -2,7 +2,6 @@
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Callable
 import time
@@ -48,14 +47,3 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
                     "detail": str(exc) if request.app.state.debug else "An error occurred"
                 }
             )
-
-
-def setup_cors(app, origins: list[str]):
-    """Setup CORS middleware."""
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
