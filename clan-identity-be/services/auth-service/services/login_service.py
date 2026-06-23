@@ -99,13 +99,16 @@ class LoginService:
     """
 
     @staticmethod
-    def get_user_from_auth_service(db: Session, email: str) -> Optional[AuthUser]:
+    def get_user_from_auth_service(db: Session, email: str, client_id=None) -> Optional[AuthUser]:
         """
-        Get user from auth_users table by email
+        Get user from auth_users table by email (and optionally client_id for multi-tenant).
         Returns AuthUser ORM object or None
         """
         try:
-            user = db.query(AuthUser).filter(AuthUser.email == email).first()
+            q = db.query(AuthUser).filter(AuthUser.email == email)
+            if client_id is not None:
+                q = q.filter(AuthUser.client_id == client_id)
+            user = q.first()
             return user
         except Exception as e:
             logger.error(f"Error querying auth_users table: {e}")
@@ -209,13 +212,16 @@ class LoginService:
             )
 
     @staticmethod
-    def get_user_from_admin_db(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_from_admin_db(admin_db: Session, email: str, client_id=None) -> Optional[Dict[str, Any]]:
         """
-        Get user from admin_service.usersetup_basic table by email
+        Get user from admin_service.usersetup_basic table by email.
+        When client_id is provided, scopes the lookup to that tenant so the
+        same email address can exist in multiple clients.
         Returns user data as dictionary
         """
         try:
-            query = text("""
+            client_filter = "AND ub.client_id = :client_id" if client_id else ""
+            query = text(f"""
                 SELECT
                     ub.id,
                     ub.user_setup_id,
@@ -240,19 +246,17 @@ class LoginService:
                     ub.default_entity,
                     ub.created_at,
                     ub.updated_at,
-                    ure.assigned_client_id as client_id
+                    ub.client_id
                 FROM usersetup_basic ub
-                LEFT JOIN LATERAL (
-                    SELECT assigned_client_id
-                    FROM usersetup_roles_entity
-                    WHERE usersetup_basic_id = ub.id
-                      AND assigned_client_id IS NOT NULL
-                    LIMIT 1
-                ) ure ON true
                 WHERE ub.email = :email
+                {client_filter}
             """)
 
-            result = admin_db.execute(query, {"email": email}).fetchone()
+            params = {"email": email}
+            if client_id:
+                params["client_id"] = str(client_id)
+
+            result = admin_db.execute(query, params).fetchone()
 
             if result:
                 return {
@@ -293,13 +297,37 @@ class LoginService:
             return None
 
     @staticmethod
-    def authenticate_user(db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
+    def resolve_client_id_from_origin(admin_db: Session, origin: str) -> Optional[str]:
         """
-        Authenticate user by email and password
+        Look up client_id in clients.allowed_origins that contains the given origin.
+        Returns the client UUID string, or None if not found.
+        """
+        if not origin:
+            return None
+        try:
+            result = admin_db.execute(
+                text(
+                    "SELECT id FROM clients "
+                    "WHERE :origin = ANY(allowed_origins) "
+                    "  AND is_active = TRUE "
+                    "  AND deleted_at IS NULL "
+                    "LIMIT 1"
+                ),
+                {"origin": origin},
+            ).fetchone()
+            return str(result[0]) if result else None
+        except Exception as e:
+            logger.warning("resolve_client_id_from_origin failed: %s", e)
+            return None
+
+    @staticmethod
+    def authenticate_user(db: Session, admin_db: Session, email: str, password: str, client_id=None) -> Optional[Dict[str, Any]]:
+        """
+        Authenticate user by email and password (and optionally client_id).
         Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
-        auth_user = LoginService.get_user_from_auth_service(db, email)
+        auth_user = LoginService.get_user_from_auth_service(db, email, client_id=client_id)
         
         if auth_user:
             # User exists in auth_users - authenticate locally
@@ -343,7 +371,7 @@ class LoginService:
             }
         
         # Fallback: Try admin_service.usersetup_basic (first-time login)
-        user = LoginService.get_user_from_admin_db(admin_db, email)
+        user = LoginService.get_user_from_admin_db(admin_db, email, client_id=client_id)
 
         if not user:
             logger.warning(f"User not found: {email}")
@@ -362,7 +390,8 @@ class LoginService:
         admin_db: Session,
         login_data: LoginRequest,
         client_ip: str = None,
-        user_agent: str = None
+        user_agent: str = None,
+        origin: str = None,
     ) -> LoginResponse:
         """
         Login user and generate tokens
@@ -371,8 +400,14 @@ class LoginService:
         - Stores session in auth_service database
         - Returns 403 if password change is required
         """
+        # Resolve client_id: explicit body value takes priority, then infer from Origin header.
+        effective_client_id = login_data.client_id or LoginService.resolve_client_id_from_origin(admin_db, origin)
+
         # Authenticate user (checks auth_users first, then admin_service)
-        user = LoginService.authenticate_user(db, admin_db, login_data.email, login_data.password)
+        user = LoginService.authenticate_user(
+            db, admin_db, login_data.email, login_data.password,
+            client_id=effective_client_id,
+        )
 
         if not user:
             # Log failed attempt in auth_service database
@@ -389,7 +424,7 @@ class LoginService:
         # AUTOMATIC SYNC: Sync latest user data from admin_service to auth_users
         # This ensures auth_users is always up-to-date with admin_service
         try:
-            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email)
+            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email, client_id=effective_client_id)
             if admin_user:
                 logger.info(f"Auto-syncing user data from admin_service for {login_data.email}")
                 synced_user = SyncService.sync_user_from_admin_data(db, admin_user)
@@ -440,12 +475,16 @@ class LoginService:
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
+        resolved_client_id = (
+            str(effective_client_id) if effective_client_id
+            else (str(user["client_id"]) if user.get("client_id") else None)
+        )
         token_data = {
             "user_id": str(user["id"]),
             "email": user["email"],
             "username": user["username"],
             "user_setup_id": str(user["user_setup_id"]) if user["user_setup_id"] else None,
-            "client_id": str(user["client_id"]) if user.get("client_id") else None,
+            "client_id": resolved_client_id,
         }
 
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)

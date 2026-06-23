@@ -192,38 +192,45 @@ app = FastAPI(
 )
 
 
-# --- CORS (env-driven via CORS_ORIGINS) ------------------------------------
-# Authoritative CORS is the API gateway (Envoy). This block only applies while
-# the service is exposed directly (Render/nginx ingress). Origins come from the
-# CORS_ORIGINS env var (JSON list or comma-separated). Empty => no CORS (prod
-# default-deny); dev falls back to localhost.
-import os as _os
-import json as _json
-from fastapi.middleware.cors import CORSMiddleware as _CORSMiddleware
+# --- Dynamic CORS — origins from clients.allowed_origins (admin DB) --------
+# Validated against the centralized clients table so no redeploy is needed
+# when onboarding a new tenant. CORS_ORIGINS env var is still honoured as a
+# static fallback (useful for local dev / shared tooling origins).
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from core.dynamic_cors import DynamicCORSMiddleware as _DynamicCORSMiddleware
 
-
-def _clan_cors_origins() -> list:
-    raw = (_os.getenv("CORS_ORIGINS") or "").strip()
-    if raw.startswith("["):
-        try:
-            return [str(o).strip() for o in _json.loads(raw) if str(o).strip()]
-        except Exception:
-            return []
-    origins = [o.strip() for o in raw.split(",") if o.strip()]
-    if not origins and _os.getenv("ENVIRONMENT", "development").lower().startswith(("dev", "local")):
-        origins = ["http://localhost:3000", "http://localhost:8080"]
-    return origins
-
-
-_clan_origins = _clan_cors_origins()
-if _clan_origins:
-    app.add_middleware(
-        _CORSMiddleware,
-        allow_origins=_clan_origins,
-        allow_credentials="*" not in _clan_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
+    _admin_engine = create_engine(
+        settings.ADMIN_DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=2,
+        max_overflow=0,
     )
+    _AdminSession = sessionmaker(bind=_admin_engine)
+
+    # Reuse the Redis client from the existing Redis connection if available.
+    _redis_client = None
+    try:
+        import redis as _redis_lib
+        _redis_client = _redis_lib.Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+        )
+        _redis_client.ping()
+    except Exception:
+        _redis_client = None
+
+    app.add_middleware(
+        _DynamicCORSMiddleware,
+        session_factory=_AdminSession,
+        redis_client=_redis_client,
+    )
+    logger.info("Dynamic CORS middleware enabled (admin DB + Redis cache)")
+except Exception as _cors_err:
+    logger.warning("Dynamic CORS setup failed (%s) — no CORS headers will be set", _cors_err)
 # ---------------------------------------------------------------------------
 
 # Add CORS middleware

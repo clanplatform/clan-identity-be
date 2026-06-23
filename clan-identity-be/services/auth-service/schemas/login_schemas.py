@@ -12,6 +12,11 @@ class LoginRequest(BaseModel):
     """Login request schema"""
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=1, description="User password")
+    client_id: Optional[UUID] = Field(
+        None,
+        description="Tenant client ID. Required when the same email exists across multiple tenants.",
+        json_schema_extra={"example": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+    )
     remember_me: Optional[bool] = Field(False, description="Remember user session")
     device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for trust")
 
