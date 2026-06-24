@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # Internal API Key for service-to-service communication
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "internal-api-key-change-in-production")
 
+    # Audit Service
+    AUDIT_SERVICE_URL: str = os.getenv("AUDIT_SERVICE_URL", "http://audit-service:8000")
+
     # Aliases for backward compatibility
     @property
     def SECRET_KEY(self) -> str:

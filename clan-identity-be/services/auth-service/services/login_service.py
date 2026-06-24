@@ -17,6 +17,8 @@ from uuid import UUID
 import logging
 import asyncio
 
+from core.audit_client import fire_audit_log
+
 logger = logging.getLogger(__name__)
 
 # Import models (will need to be created or imported correctly)
@@ -414,7 +416,14 @@ class LoginService:
             LoginService._log_login_attempt(
                 db, None, login_data.email, client_ip, user_agent, False, "invalid_credentials"
             )
-
+            fire_audit_log(
+                action="LOGIN_FAILED",
+                object_type="AuthUser",
+                client_id=str(effective_client_id) if effective_client_id else None,
+                new_values={"email": login_data.email, "reason": "invalid_credentials"},
+                ip_address=client_ip,
+                user_agent=user_agent,
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
@@ -444,6 +453,16 @@ class LoginService:
         if user["status"] != "active":
             LoginService._log_login_attempt(
                 db, user["id"], login_data.email, client_ip, user_agent, False, "account_inactive"
+            )
+            fire_audit_log(
+                action="LOGIN_FAILED",
+                object_type="AuthUser",
+                object_id=str(user["id"]),
+                client_id=str(effective_client_id) if effective_client_id else None,
+                user_id=str(user["id"]),
+                new_values={"email": login_data.email, "reason": "account_inactive", "status": user["status"]},
+                ip_address=client_ip,
+                user_agent=user_agent,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -500,6 +519,17 @@ class LoginService:
         # Log successful attempt in auth_service database
         LoginService._log_login_attempt(
             db, user["id"], login_data.email, client_ip, user_agent, True, None
+        )
+        fire_audit_log(
+            action="LOGIN",
+            object_type="AuthUser",
+            object_id=str(user["id"]),
+            client_id=resolved_client_id,
+            user_id=str(user["id"]),
+            session_id=str(session.id),
+            new_values={"email": user["email"], "username": user.get("username")},
+            ip_address=client_ip,
+            user_agent=user_agent,
         )
 
         # Publish user login event (async, non-blocking)
@@ -756,6 +786,14 @@ class LoginService:
         except Exception as e:
             logger.warning(f"Failed to publish user_data_sync event: {e}")
 
+        fire_audit_log(
+            action="PASSWORD_CHANGE",
+            object_type="AuthUser",
+            object_id=str(admin_user["id"]),
+            client_id=str(admin_user["client_id"]) if admin_user.get("client_id") else None,
+            user_id=str(admin_user["id"]),
+            new_values={"email": email, "changed_by": "user"},
+        )
         return ChangePasswordResponse(
             message="The password is successfully changed. You will logout in 2 sec",
             email=email,
@@ -913,6 +951,13 @@ class LoginService:
             access_ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
             blacklist_token(hash_token(access_token), ttl=access_ttl)
 
+        fire_audit_log(
+            action="LOGOUT",
+            object_type="AuthUser",
+            object_id=str(user_id),
+            user_id=str(user_id),
+            new_values={"sessions_revoked": sessions_revoked, "all_sessions": all_sessions},
+        )
         return {
             "message": "Logged out successfully",
             "sessions_revoked": sessions_revoked,
