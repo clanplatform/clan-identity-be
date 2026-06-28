@@ -72,7 +72,6 @@ def login(
     # Extract client information from request
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent", "")
-    origin = request.headers.get("origin", "")
 
     # Delegate to service layer (includes automatic sync)
     return LoginService.login(
@@ -81,7 +80,6 @@ def login(
         login_data=login_data,
         client_ip=client_ip,
         user_agent=user_agent,
-        origin=origin,
     )
 
 

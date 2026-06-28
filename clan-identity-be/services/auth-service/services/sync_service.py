@@ -252,7 +252,7 @@ class SyncService:
             view=sync_data.view,
             dashboard_view=sync_data.dashboard_view,
             # Tenant
-            client_id=getattr(sync_data, "client_id", None),
+            tenant_id=getattr(sync_data, "tenant_id", None),
         )
         
         db.add(auth_user)
@@ -318,8 +318,8 @@ class SyncService:
         user.dashboard_view = sync_data.dashboard_view
 
         # Tenant
-        if getattr(sync_data, "client_id", None) is not None:
-            user.client_id = sync_data.client_id
+        if getattr(sync_data, "tenant_id", None) is not None:
+            user.tenant_id = sync_data.tenant_id
 
         # Update timestamp
         user.updated_at = datetime.now(timezone.utc)
@@ -373,7 +373,7 @@ class SyncService:
                 default_entity=admin_user_data.get("default_entity"),
                 view=admin_user_data.get("view"),
                 dashboard_view=admin_user_data.get("dashboard_view"),
-                client_id=admin_user_data.get("client_id"),
+                tenant_id=admin_user_data.get("tenant_id"),
             )
             
             # Sync the user

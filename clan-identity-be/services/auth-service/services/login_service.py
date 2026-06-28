@@ -101,16 +101,13 @@ class LoginService:
     """
 
     @staticmethod
-    def get_user_from_auth_service(db: Session, email: str, client_id=None) -> Optional[AuthUser]:
+    def get_user_from_auth_service(db: Session, email: str) -> Optional[AuthUser]:
         """
-        Get user from auth_users table by email (and optionally client_id for multi-tenant).
+        Get user from auth_users table by email.
         Returns AuthUser ORM object or None
         """
         try:
-            q = db.query(AuthUser).filter(AuthUser.email == email)
-            if client_id is not None:
-                q = q.filter(AuthUser.client_id == client_id)
-            user = q.first()
+            user = db.query(AuthUser).filter(AuthUser.email == email).first()
             return user
         except Exception as e:
             logger.error(f"Error querying auth_users table: {e}")
@@ -170,7 +167,7 @@ class LoginService:
                 view=admin_user_data.get("view"),
                 dashboard_view=admin_user_data.get("dashboard_view"),
                 # Tenant
-                client_id=admin_user_data.get("client_id"),
+                tenant_id=admin_user_data.get("tenant_id"),
             )
             
             db.add(auth_user)
@@ -214,16 +211,13 @@ class LoginService:
             )
 
     @staticmethod
-    def get_user_from_admin_db(admin_db: Session, email: str, client_id=None) -> Optional[Dict[str, Any]]:
+    def get_user_from_admin_db(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
         """
         Get user from admin_service.usersetup_basic table by email.
-        When client_id is provided, scopes the lookup to that tenant so the
-        same email address can exist in multiple clients.
         Returns user data as dictionary
         """
         try:
-            client_filter = "AND ub.client_id = :client_id" if client_id else ""
-            query = text(f"""
+            query = text("""
                 SELECT
                     ub.id,
                     ub.user_setup_id,
@@ -248,17 +242,13 @@ class LoginService:
                     ub.default_entity,
                     ub.created_at,
                     ub.updated_at,
-                    ub.client_id
+                    c.tenant_id
                 FROM usersetup_basic ub
+                LEFT JOIN clients c ON c.client_id = ub.client_id
                 WHERE ub.email = :email
-                {client_filter}
             """)
 
-            params = {"email": email}
-            if client_id:
-                params["client_id"] = str(client_id)
-
-            result = admin_db.execute(query, params).fetchone()
+            result = admin_db.execute(query, {"email": email}).fetchone()
 
             if result:
                 return {
@@ -285,7 +275,7 @@ class LoginService:
                     "default_entity": result.default_entity,
                     "created_at": result.created_at,
                     "updated_at": result.updated_at,
-                    "client_id": result.client_id,
+                    "tenant_id": result.tenant_id,
                 }
             return None
         except Exception as e:
@@ -299,37 +289,13 @@ class LoginService:
             return None
 
     @staticmethod
-    def resolve_client_id_from_origin(admin_db: Session, origin: str) -> Optional[str]:
+    def authenticate_user(db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
         """
-        Look up client_id in clients.allowed_origins that contains the given origin.
-        Returns the client UUID string, or None if not found.
-        """
-        if not origin:
-            return None
-        try:
-            result = admin_db.execute(
-                text(
-                    "SELECT id FROM clients "
-                    "WHERE :origin = ANY(allowed_origins) "
-                    "  AND is_active = TRUE "
-                    "  AND deleted_at IS NULL "
-                    "LIMIT 1"
-                ),
-                {"origin": origin},
-            ).fetchone()
-            return str(result[0]) if result else None
-        except Exception as e:
-            logger.warning("resolve_client_id_from_origin failed: %s", e)
-            return None
-
-    @staticmethod
-    def authenticate_user(db: Session, admin_db: Session, email: str, password: str, client_id=None) -> Optional[Dict[str, Any]]:
-        """
-        Authenticate user by email and password (and optionally client_id).
+        Authenticate user by email and password.
         Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
-        auth_user = LoginService.get_user_from_auth_service(db, email, client_id=client_id)
+        auth_user = LoginService.get_user_from_auth_service(db, email)
         
         if auth_user:
             # User exists in auth_users - authenticate locally
@@ -368,12 +334,12 @@ class LoginService:
                 "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
-                "client_id": auth_user.client_id,
+                "tenant_id": auth_user.tenant_id,
                 "source": "auth_service"  # Mark source for tracking
             }
         
         # Fallback: Try admin_service.usersetup_basic (first-time login)
-        user = LoginService.get_user_from_admin_db(admin_db, email, client_id=client_id)
+        user = LoginService.get_user_from_admin_db(admin_db, email)
 
         if not user:
             logger.warning(f"User not found: {email}")
@@ -393,7 +359,6 @@ class LoginService:
         login_data: LoginRequest,
         client_ip: str = None,
         user_agent: str = None,
-        origin: str = None,
     ) -> LoginResponse:
         """
         Login user and generate tokens
@@ -402,13 +367,9 @@ class LoginService:
         - Stores session in auth_service database
         - Returns 403 if password change is required
         """
-        # Resolve client_id: explicit body value takes priority, then infer from Origin header.
-        effective_client_id = login_data.client_id or LoginService.resolve_client_id_from_origin(admin_db, origin)
-
         # Authenticate user (checks auth_users first, then admin_service)
         user = LoginService.authenticate_user(
             db, admin_db, login_data.email, login_data.password,
-            client_id=effective_client_id,
         )
 
         if not user:
@@ -419,7 +380,6 @@ class LoginService:
             fire_audit_log(
                 action="LOGIN_FAILED",
                 object_type="AuthUser",
-                client_id=str(effective_client_id) if effective_client_id else None,
                 new_values={"email": login_data.email, "reason": "invalid_credentials"},
                 ip_address=client_ip,
                 user_agent=user_agent,
@@ -433,7 +393,7 @@ class LoginService:
         # AUTOMATIC SYNC: Sync latest user data from admin_service to auth_users
         # This ensures auth_users is always up-to-date with admin_service
         try:
-            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email, client_id=effective_client_id)
+            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email)
             if admin_user:
                 logger.info(f"Auto-syncing user data from admin_service for {login_data.email}")
                 synced_user = SyncService.sync_user_from_admin_data(db, admin_user)
@@ -458,7 +418,7 @@ class LoginService:
                 action="LOGIN_FAILED",
                 object_type="AuthUser",
                 object_id=str(user["id"]),
-                client_id=str(effective_client_id) if effective_client_id else None,
+                tenant_id=str(user["tenant_id"]) if user.get("tenant_id") else None,
                 user_id=str(user["id"]),
                 new_values={"email": login_data.email, "reason": "account_inactive", "status": user["status"]},
                 ip_address=client_ip,
@@ -494,16 +454,12 @@ class LoginService:
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
-        resolved_client_id = (
-            str(effective_client_id) if effective_client_id
-            else (str(user["client_id"]) if user.get("client_id") else None)
-        )
         token_data = {
             "user_id": str(user["id"]),
             "email": user["email"],
             "username": user["username"],
             "user_setup_id": str(user["user_setup_id"]) if user["user_setup_id"] else None,
-            "client_id": resolved_client_id,
+            "tenant_id": str(user["tenant_id"]) if user.get("tenant_id") else None,
         }
 
         access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
@@ -524,7 +480,6 @@ class LoginService:
             action="LOGIN",
             object_type="AuthUser",
             object_id=str(user["id"]),
-            client_id=resolved_client_id,
             user_id=str(user["id"]),
             session_id=str(session.id),
             new_values={"email": user["email"], "username": user.get("username")},
@@ -625,7 +580,7 @@ class LoginService:
             status=user["status"],
             roles=user["manage_roles"] or [],
             admin_user_id=user["user_setup_id"],
-            client_id=user.get("client_id"),
+            tenant_id=user.get("tenant_id"),
         )
 
         return LoginResponse(
@@ -790,7 +745,7 @@ class LoginService:
             action="PASSWORD_CHANGE",
             object_type="AuthUser",
             object_id=str(admin_user["id"]),
-            client_id=str(admin_user["client_id"]) if admin_user.get("client_id") else None,
+            tenant_id=str(admin_user["tenant_id"]) if admin_user.get("tenant_id") else None,
             user_id=str(admin_user["id"]),
             new_values={"email": email, "changed_by": "user"},
         )
@@ -846,7 +801,6 @@ class LoginService:
             "user_id": payload.get("user_id"),
             "email": payload.get("email"),
             "username": payload.get("username"),
-            "client_id": payload.get("client_id"),
         }
 
         access_token = create_access_token(

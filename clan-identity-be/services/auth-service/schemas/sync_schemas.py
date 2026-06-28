@@ -58,8 +58,8 @@ class UserSyncRequest(BaseModel):
     view: Optional[str] = Field(None, max_length=50)
     dashboard_view: Optional[str] = Field(None, max_length=50)
 
-    # Tenant
-    client_id: Optional[UUID] = Field(None, description="Client/tenant ID from usersetup_roles_entity")
+    # Tenant identifier (from clients.tenant_id in admin_service)
+    tenant_id: Optional[UUID] = Field(None, description="Tenant UUID from clients table")
 
     class Config:
         json_schema_extra = {
