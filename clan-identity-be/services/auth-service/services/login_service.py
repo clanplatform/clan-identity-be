@@ -242,10 +242,8 @@ class LoginService:
                     ub.default_entity,
                     ub.created_at,
                     ub.updated_at,
-                    ub.client_id,
-                    c.gateway_tenant_ref AS tenant_id
+                    ub.tenant_id
                 FROM usersetup_basic ub
-                LEFT JOIN clients c ON c.client_id = ub.client_id
                 WHERE ub.email = :email
             """)
 
@@ -276,7 +274,6 @@ class LoginService:
                     "default_entity": result.default_entity,
                     "created_at": result.created_at,
                     "updated_at": result.updated_at,
-                    "client_id": result.client_id,
                     "tenant_id": result.tenant_id,
                 }
             return None
@@ -336,7 +333,6 @@ class LoginService:
                 "dashboard_view": auth_user.dashboard_view,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
-                "client_id": auth_user.client_id if hasattr(auth_user, "client_id") else None,
                 "tenant_id": auth_user.tenant_id,
                 "source": "auth_service"  # Mark source for tracking
             }
@@ -462,7 +458,6 @@ class LoginService:
             "email": user["email"],
             "username": user["username"],
             "user_setup_id": str(user["user_setup_id"]) if user["user_setup_id"] else None,
-            "client_id": str(user["client_id"]) if user.get("client_id") else None,
             "tenant_id": str(user["tenant_id"]) if user.get("tenant_id") else None,
         }
 
@@ -805,7 +800,6 @@ class LoginService:
             "user_id": payload.get("user_id"),
             "email": payload.get("email"),
             "username": payload.get("username"),
-            "client_id": payload.get("client_id"),
             "tenant_id": payload.get("tenant_id"),
         }
 
