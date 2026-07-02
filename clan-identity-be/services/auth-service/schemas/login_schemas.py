@@ -12,6 +12,7 @@ class LoginRequest(BaseModel):
     """Login request schema"""
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=1, description="User password")
+    tenant_id: Optional[UUID] = Field(None, description="Tenant UUID — required for tenant users, omit for master-DB users")
     remember_me: Optional[bool] = Field(False, description="Remember user session")
     device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for trust")
 
@@ -58,6 +59,7 @@ class LoginResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """Change password request schema"""
     email: EmailStr = Field(..., description="User email address")
+    tenant_id: Optional[UUID] = Field(None, description="Tenant UUID — required for tenant users")
     current_password: str = Field(..., min_length=1, description="Current password")
     new_password: str = Field(..., min_length=8, max_length=100, description="New password")
     confirm_password: str = Field(..., min_length=8, max_length=100, description="Confirm new password")

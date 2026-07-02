@@ -8,8 +8,8 @@ AUTHENTICATION FLOW:
 Stores sessions in user_service database
 Publishes sync events to admin-service for user activity tracking
 """
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 from fastapi import HTTPException, status
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
@@ -99,6 +99,116 @@ class LoginService:
     3. Subsequent logins: Authenticates from auth_users table (faster, local)
     Stores sessions and login attempts in user_service database
     """
+
+    @staticmethod
+    def _get_tenant_db_name(admin_db: Session, email: str, tenant_id: Optional[str] = None) -> Optional[str]:
+        """
+        Resolve the tenant's dedicated DB name.
+        - tenant_id NOT provided → return None immediately (master-DB user, no lookup)
+        - tenant_id provided     → look up by tenant_id; if not found fall back to
+                                   contact_email (handles wrong/placeholder UUIDs)
+        """
+        if not tenant_id:
+            return None
+
+        try:
+            # 1. Try by tenant_id
+            logger.info("[TENANT_LOOKUP] Searching by tenant_id=%s", tenant_id)
+            row = admin_db.execute(
+                text("SELECT tenant_db_name FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                {"tid": str(tenant_id)},
+            ).fetchone()
+
+            if row and row.tenant_db_name:
+                logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s", row.tenant_db_name)
+                return row.tenant_db_name
+
+            # 2. tenant_id given but not matched → fall back to contact_email
+            logger.warning("[TENANT_LOOKUP] tenant_id=%s not found, falling back to email lookup", tenant_id)
+            row = admin_db.execute(
+                text("SELECT tenant_db_name FROM tenants WHERE contact_email = :email AND is_active = true"),
+                {"email": email},
+            ).fetchone()
+
+            if row and row.tenant_db_name:
+                logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s via contact_email", row.tenant_db_name)
+                return row.tenant_db_name
+
+            logger.warning("[TENANT_LOOKUP] No tenant_db_name found for email=%s tenant_id=%s", email, tenant_id)
+            return None
+        except Exception as exc:
+            logger.warning("[TENANT_LOOKUP] Error for email=%s: %s", email, exc)
+            return None
+
+    @staticmethod
+    def _query_usersetup_basic(db: Session, email: str) -> Optional[Dict[str, Any]]:
+        """Execute usersetup_basic lookup against a given SQLAlchemy session."""
+        try:
+            query = text("""
+                SELECT
+                    ub.id,
+                    ub.user_setup_id,
+                    ub.firstname,
+                    ub.lastname,
+                    ub.employee_id,
+                    ub.username,
+                    ub.email,
+                    ub.phone_number,
+                    ub.password_hash,
+                    ub.password_changed,
+                    ub.is_password_change,
+                    NOT ub.is_password_change as is_password_change_required,
+                    ub.status,
+                    ub.department,
+                    ub.division,
+                    ub.job_code,
+                    ub.manage_roles,
+                    ub.default_dept,
+                    ub.reporting_to,
+                    ub.entities,
+                    ub.default_entity,
+                    ub.created_at,
+                    ub.updated_at,
+                    ub.tenant_id
+                FROM usersetup_basic ub
+                WHERE ub.email = :email
+            """)
+            result = db.execute(query, {"email": email}).fetchone()
+            if not result:
+                return None
+            return {
+                "id": result.id,
+                "user_setup_id": result.user_setup_id,
+                "firstname": result.firstname,
+                "lastname": result.lastname,
+                "employee_id": result.employee_id,
+                "username": result.username,
+                "email": result.email,
+                "phone_number": result.phone_number,
+                "password_hash": result.password_hash,
+                "password_changed": result.password_changed,
+                "is_password_change": result.is_password_change,
+                "is_password_change_required": result.is_password_change_required,
+                "status": result.status,
+                "department": result.department,
+                "division": result.division,
+                "job_code": result.job_code,
+                "manage_roles": result.manage_roles,
+                "default_dept": result.default_dept,
+                "reporting_to": result.reporting_to,
+                "entities": result.entities,
+                "default_entity": result.default_entity,
+                "created_at": result.created_at,
+                "updated_at": result.updated_at,
+                "tenant_id": result.tenant_id,
+            }
+        except Exception as exc:
+            logger.error("Error querying usersetup_basic: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return None
 
     @staticmethod
     def get_user_from_auth_service(db: Session, email: str) -> Optional[AuthUser]:
@@ -211,102 +321,84 @@ class LoginService:
             )
 
     @staticmethod
-    def get_user_from_admin_db(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_from_admin_db(
+        admin_db: Session,
+        email: str,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Get user from admin_service.usersetup_basic table by email.
-        Returns user data as dictionary
+        Get user from usersetup_basic by email.
+
+        If tenant_id is provided (or the email matches a tenant's contact_email),
+        queries that tenant's dedicated database.  Falls back to the master DB.
         """
-        try:
-            query = text("""
-                SELECT
-                    ub.id,
-                    ub.user_setup_id,
-                    ub.firstname,
-                    ub.lastname,
-                    ub.employee_id,
-                    ub.username,
-                    ub.email,
-                    ub.phone_number,
-                    ub.password_hash,
-                    ub.password_changed,
-                    ub.is_password_change,
-                    NOT ub.is_password_change as is_password_change_required,
-                    ub.status,
-                    ub.department,
-                    ub.division,
-                    ub.job_code,
-                    ub.manage_roles,
-                    ub.default_dept,
-                    ub.reporting_to,
-                    ub.entities,
-                    ub.default_entity,
-                    ub.created_at,
-                    ub.updated_at,
-                    ub.tenant_id
-                FROM usersetup_basic ub
-                WHERE ub.email = :email
-            """)
+        tenant_db_name = LoginService._get_tenant_db_name(admin_db, email, tenant_id)
 
-            result = admin_db.execute(query, {"email": email}).fetchone()
-
-            if result:
-                return {
-                    "id": result.id,
-                    "user_setup_id": result.user_setup_id,
-                    "firstname": result.firstname,
-                    "lastname": result.lastname,
-                    "employee_id": result.employee_id,
-                    "username": result.username,
-                    "email": result.email,
-                    "phone_number": result.phone_number,
-                    "password_hash": result.password_hash,
-                    "password_changed": result.password_changed,
-                    "is_password_change": result.is_password_change,
-                    "is_password_change_required": result.is_password_change_required,
-                    "status": result.status,
-                    "department": result.department,
-                    "division": result.division,
-                    "job_code": result.job_code,
-                    "manage_roles": result.manage_roles,
-                    "default_dept": result.default_dept,
-                    "reporting_to": result.reporting_to,
-                    "entities": result.entities,
-                    "default_entity": result.default_entity,
-                    "created_at": result.created_at,
-                    "updated_at": result.updated_at,
-                    "tenant_id": result.tenant_id,
-                }
-            return None
-        except Exception as e:
-            logger.error(f"Error querying admin_service.usersetup_basic table: {e}")
-            logger.exception("Full exception:")
-            # Rollback to clear any failed transaction state
+        if tenant_db_name:
+            admin_url = settings.ADMIN_DATABASE_URL
+            tenant_url = admin_url.rsplit("/", 1)[0] + "/" + tenant_db_name
+            logger.info("[USER_LOOKUP] Connecting to tenant DB: %s", tenant_db_name)
+            tenant_engine = None
             try:
-                admin_db.rollback()
-            except:
-                pass
-            return None
+                tenant_engine = create_engine(tenant_url, pool_pre_ping=True, pool_size=2, max_overflow=3)
+                TenantSession = sessionmaker(bind=tenant_engine)
+                tenant_db = TenantSession()
+                try:
+                    user = LoginService._query_usersetup_basic(tenant_db, email)
+                    if user:
+                        logger.info("[USER_LOOKUP] User found in tenant DB %s — pw_hash prefix: %s",
+                                    tenant_db_name, (user.get("password_hash") or "")[:20])
+                        return user
+                    logger.warning("[USER_LOOKUP] User %s NOT found in tenant DB %s", email, tenant_db_name)
+                finally:
+                    tenant_db.close()
+            except Exception as exc:
+                logger.warning("[USER_LOOKUP] Error querying tenant DB %s: %s", tenant_db_name, exc)
+            finally:
+                if tenant_engine:
+                    tenant_engine.dispose()
+
+        # Fallback: master DB
+        logger.info("[USER_LOOKUP] Falling back to master DB for email=%s", email)
+        user = LoginService._query_usersetup_basic(admin_db, email)
+        if user:
+            logger.info("[USER_LOOKUP] User found in master DB")
+        else:
+            logger.warning("[USER_LOOKUP] User %s NOT found in master DB either", email)
+        return user
 
     @staticmethod
-    def authenticate_user(db: Session, admin_db: Session, email: str, password: str) -> Optional[Dict[str, Any]]:
+    def authenticate_user(
+        db: Session,
+        admin_db: Session,
+        email: str,
+        password: str,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         Authenticate user by email and password.
-        Priority: auth_users table → admin_service.usersetup_basic (fallback for first login)
+        Priority: auth_users table → tenant/master usersetup_basic (fallback for first login)
         """
         # First, try to authenticate from auth_users table (local, faster)
         auth_user = LoginService.get_user_from_auth_service(db, email)
-        
+
         if auth_user:
-            # User exists in auth_users - authenticate locally
-            if not verify_password(password, auth_user.password_hash):
+            # Validate tenant_id matches
+            if tenant_id and auth_user.tenant_id:
+                if str(auth_user.tenant_id) != str(tenant_id):
+                    logger.warning(
+                        "[AUTH] tenant_id mismatch (auth_users) for email=%s — request=%s user=%s",
+                        email, tenant_id, auth_user.tenant_id
+                    )
+                    return None
+
+            if not LoginService._smart_verify(password, auth_user.password_hash):
                 logger.warning(f"Invalid password for auth_user: {email}")
                 return None
-            
-            # Convert AuthUser ORM object to dictionary for consistency
             return {
                 "id": auth_user.id,
                 "admin_user_id": auth_user.user_setup_id,
-                "user_setup_id": auth_user.user_setup_id,  # Alias for compatibility
+                "user_setup_id": auth_user.user_setup_id,
                 "firstname": auth_user.firstname,
                 "lastname": auth_user.lastname,
                 "employee_id": auth_user.employee_id,
@@ -334,22 +426,50 @@ class LoginService:
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
                 "tenant_id": auth_user.tenant_id,
-                "source": "auth_service"  # Mark source for tracking
+                "source": "auth_service",
             }
-        
-        # Fallback: Try admin_service.usersetup_basic (first-time login)
-        user = LoginService.get_user_from_admin_db(admin_db, email)
+
+        # Fallback: tenant DB or master DB usersetup_basic (first-time login)
+        user = LoginService.get_user_from_admin_db(admin_db, email, tenant_id)
 
         if not user:
-            logger.warning(f"User not found: {email}")
+            logger.warning("[AUTH] User not found anywhere for email=%s", email)
             return None
 
-        if not verify_password(password, user["password_hash"]):
-            logger.warning(f"Invalid password for user: {email}")
+        # Validate tenant_id matches the user's own tenant_id
+        if tenant_id and user.get("tenant_id"):
+            if str(user["tenant_id"]) != str(tenant_id):
+                logger.warning(
+                    "[AUTH] tenant_id mismatch for email=%s — request tenant_id=%s but user belongs to tenant_id=%s",
+                    email, tenant_id, user["tenant_id"]
+                )
+                return None
+        elif tenant_id and not user.get("tenant_id"):
+            # tenant_id provided but user has no tenant assigned
+            logger.warning("[AUTH] tenant_id=%s provided but user %s has no tenant assigned", tenant_id, email)
             return None
 
-        user["source"] = "admin_db"  # Mark source for tracking
+        pw_match = LoginService._smart_verify(password, user["password_hash"])
+        logger.info("[AUTH] Password verify for %s → %s (hash prefix: %s)",
+                    email, pw_match, (user.get("password_hash") or "")[:20])
+        if not pw_match:
+            logger.warning("[AUTH] Password mismatch for email=%s", email)
+            return None
+
+        user["source"] = "admin_db"
         return user
+
+    @staticmethod
+    def _smart_verify(password_input: str, stored_hash: str) -> bool:
+        """
+        Accept either a plaintext password or the bcrypt hash itself.
+        - If the input starts with a bcrypt prefix ($2a$, $2b$, $2y$),
+          compare it directly against the stored hash (hash == hash).
+        - Otherwise treat it as plaintext and run bcrypt verify.
+        """
+        if password_input.startswith(("$2a$", "$2b$", "$2y$")):
+            return password_input == stored_hash
+        return verify_password(password_input, stored_hash)
 
     @staticmethod
     def login(
@@ -361,14 +481,16 @@ class LoginService:
     ) -> LoginResponse:
         """
         Login user and generate tokens
-        - Authenticates from auth_users table (if exists) or admin_service.usersetup_basic (first login)
+        - Authenticates from auth_users table (if exists) or tenant/master usersetup_basic (first login)
         - Automatically syncs latest user data from admin_service to auth_users on every login
         - Stores session in auth_service database
         - Returns 403 if password change is required
         """
-        # Authenticate user (checks auth_users first, then admin_service)
+        tenant_id_str = str(login_data.tenant_id) if login_data.tenant_id else None
+
+        # Authenticate user (checks auth_users first, then tenant/master DB)
         user = LoginService.authenticate_user(
-            db, admin_db, login_data.email, login_data.password,
+            db, admin_db, login_data.email, login_data.password, tenant_id_str,
         )
 
         if not user:
@@ -389,10 +511,9 @@ class LoginService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # AUTOMATIC SYNC: Sync latest user data from admin_service to auth_users
-        # This ensures auth_users is always up-to-date with admin_service
+        # AUTOMATIC SYNC: Sync latest user data from tenant/master DB to auth_users
         try:
-            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email)
+            admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email, tenant_id_str)
             if admin_user:
                 logger.info(f"Auto-syncing user data from admin_service for {login_data.email}")
                 synced_user = SyncService.sync_user_from_admin_data(db, admin_user)
@@ -599,7 +720,8 @@ class LoginService:
         email: str,
         current_password: str,
         new_password: str,
-        confirm_password: str
+        confirm_password: str,
+        tenant_id: Optional[str] = None,
     ) -> ChangePasswordResponse:
         """
         Change user password
@@ -617,8 +739,8 @@ class LoginService:
                 }
             )
 
-        # Get user from admin_service
-        admin_user = LoginService.get_user_from_admin_db(admin_db, email)
+        # Get user from tenant DB or master DB
+        admin_user = LoginService.get_user_from_admin_db(admin_db, email, tenant_id)
         if not admin_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -644,8 +766,8 @@ class LoginService:
 
         # Generate new password hash
         new_hash = get_password_hash(new_password)
-        
-        # Update password in admin_service.usersetup_basic
+
+        # Resolve which DB to update (tenant DB or master DB)
         update_query = text("""
             UPDATE usersetup_basic
             SET password_hash = :password_hash,
@@ -654,21 +776,38 @@ class LoginService:
                 updated_at = :updated_at
             WHERE email = :email
         """)
-
-        admin_db.execute(update_query, {
+        update_params = {
             "password_hash": new_hash,
             "password_changed": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
-            "email": email
-        })
-        admin_db.commit()
+            "email": email,
+        }
 
-        logger.info(f"Password updated in admin_service for {email}")
+        tenant_db_name = LoginService._get_tenant_db_name(admin_db, email, tenant_id)
+        if tenant_db_name:
+            admin_url = settings.ADMIN_DATABASE_URL
+            tenant_url = admin_url.rsplit("/", 1)[0] + "/" + tenant_db_name
+            tenant_engine = create_engine(tenant_url, pool_pre_ping=True, pool_size=2, max_overflow=3)
+            try:
+                TenantSession = sessionmaker(bind=tenant_engine)
+                t_db = TenantSession()
+                try:
+                    t_db.execute(update_query, update_params)
+                    t_db.commit()
+                    logger.info("Password updated in tenant DB %s for %s", tenant_db_name, email)
+                finally:
+                    t_db.close()
+            finally:
+                tenant_engine.dispose()
+        else:
+            admin_db.execute(update_query, update_params)
+            admin_db.commit()
+            logger.info("Password updated in master DB for %s", email)
         
         # AUTOMATIC SYNC: Sync updated user data to auth_users after password change
         try:
             logger.info(f"Auto-syncing user data after password change for {email}")
-            updated_admin_user = LoginService.get_user_from_admin_db(admin_db, email)
+            updated_admin_user = LoginService.get_user_from_admin_db(admin_db, email, tenant_id)
             if updated_admin_user:
                 synced_user = SyncService.sync_user_from_admin_data(db, updated_admin_user)
                 if synced_user:
