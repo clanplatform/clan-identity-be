@@ -141,6 +141,37 @@ class LoginService:
             return None
 
     @staticmethod
+    def _get_tenant_redirect_url(admin_db: Session, tenant_id: Optional[str]) -> Optional[str]:
+        """
+        Resolve the tenant's application URL from tenants.allowed_origins
+        in the master admin DB (first entry — the tenant's frontend app).
+        Returns None for master users or when no origin is configured.
+        """
+        if not tenant_id:
+            return None
+        try:
+            row = admin_db.execute(
+                text(
+                    "SELECT allowed_origins FROM tenants "
+                    "WHERE tenant_id = :tid AND is_active = true"
+                ),
+                {"tid": str(tenant_id)},
+            ).fetchone()
+            if row and row.allowed_origins:
+                redirect_url = row.allowed_origins[0]
+                logger.info("[TENANT_REDIRECT] tenant %s → %s", tenant_id, redirect_url)
+                return redirect_url
+            logger.info("[TENANT_REDIRECT] tenant %s has no allowed_origins configured", tenant_id)
+            return None
+        except Exception as exc:
+            logger.warning("[TENANT_REDIRECT] Lookup failed for tenant %s: %s", tenant_id, exc)
+            try:
+                admin_db.rollback()
+            except Exception:
+                pass
+            return None
+
+    @staticmethod
     def _query_usersetup_basic(db: Session, email: str) -> Optional[Dict[str, Any]]:
         """Execute usersetup_basic lookup against a given SQLAlchemy session."""
         try:
@@ -158,6 +189,7 @@ class LoginService:
                     ub.password_changed,
                     ub.is_password_change,
                     NOT ub.is_password_change as is_password_change_required,
+                    ub.can_change_password,
                     ub.status,
                     ub.department,
                     ub.division,
@@ -189,6 +221,7 @@ class LoginService:
                 "password_changed": result.password_changed,
                 "is_password_change": result.is_password_change,
                 "is_password_change_required": result.is_password_change_required,
+                "can_change_password": result.can_change_password,
                 "status": result.status,
                 "department": result.department,
                 "division": result.division,
@@ -409,6 +442,7 @@ class LoginService:
                 "password_changed": auth_user.password_changed,
                 "is_password_change": auth_user.is_password_change,
                 "is_password_change_required": not auth_user.is_password_change,
+                "can_change_password": getattr(auth_user, "can_change_password", True),
                 "status": auth_user.status,
                 "start_date": auth_user.start_date,
                 "end_date": auth_user.end_date,
@@ -549,8 +583,11 @@ class LoginService:
                 detail=f"User account is {user['status']}. Please contact administrator.",
             )
 
-        # Check if password change is required (first login)
-        if user["is_password_change_required"]:
+        # Check if password change is required (first login).
+        # Applies only when can_change_password is enabled — users with
+        # can_change_password=False log straight in and are redirected to
+        # their tenant application.
+        if user.get("can_change_password", True) and user["is_password_change_required"]:
             # Log the attempt as successful but requiring password change
             LoginService._log_login_attempt(
                 db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required"
@@ -703,6 +740,12 @@ class LoginService:
             tenant_id=user.get("tenant_id"),
         )
 
+        # Tenant users land in their application (tenants.allowed_origins) after login
+        redirect_to = LoginService._get_tenant_redirect_url(
+            admin_db,
+            str(user["tenant_id"]) if user.get("tenant_id") else tenant_id_str,
+        )
+
         return LoginResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -711,6 +754,7 @@ class LoginService:
             expires_in=int(access_token_expires.total_seconds()),
             session_id=session.id,
             user=user_info,
+            redirect_to=redirect_to,
         )
 
     @staticmethod
@@ -752,8 +796,22 @@ class LoginService:
                 }
             )
 
-        # Verify current password
-        if not verify_password(current_password, admin_user["password_hash"]):
+        # Users with can_change_password=False are not allowed to change
+        # their password — they log in directly with the assigned password.
+        if not admin_user.get("can_change_password", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Password change is not allowed for this account",
+                    "error_code": "PASSWORD_CHANGE_NOT_ALLOWED",
+                    "error_type": "validation_error",
+                    "show_popup": True
+                }
+            )
+
+        # Verify current password — accepts the plaintext password or the
+        # stored bcrypt hash itself, same as login's _smart_verify.
+        if not LoginService._smart_verify(current_password, admin_user["password_hash"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={

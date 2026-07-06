@@ -231,6 +231,7 @@ class SyncService:
             password_hash=sync_data.password_hash,
             password_changed=sync_data.password_changed,
             is_password_change=sync_data.is_password_change,
+            can_change_password=getattr(sync_data, "can_change_password", True),
             # Employment Status
             status=sync_data.status,
             start_date=sync_data.start_date,
@@ -290,6 +291,7 @@ class SyncService:
         user.password_hash = sync_data.password_hash
         user.password_changed = sync_data.password_changed
         user.is_password_change = sync_data.is_password_change
+        user.can_change_password = getattr(sync_data, "can_change_password", True)
         
         # Employment Status
         user.status = sync_data.status
@@ -359,6 +361,7 @@ class SyncService:
                 password_hash=admin_user_data["password_hash"],
                 password_changed=admin_user_data.get("password_changed"),
                 is_password_change=admin_user_data.get("is_password_change", False),
+                can_change_password=admin_user_data.get("can_change_password", True),
                 status=admin_user_data.get("status", "active"),
                 start_date=admin_user_data.get("start_date"),
                 end_date=admin_user_data.get("end_date"),

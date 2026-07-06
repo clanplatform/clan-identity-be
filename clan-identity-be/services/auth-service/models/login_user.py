@@ -39,6 +39,9 @@ class AuthUser(Base):
     password_hash = Column(String(255), nullable=False)
     password_changed = Column(DateTime(timezone=True), nullable=True)
     is_password_change = Column(Boolean, default=False, nullable=False)
+    # True → first-login password-change flow applies; False → user logs
+    # straight in and is redirected to the tenant's application.
+    can_change_password = Column(Boolean, default=True, server_default='true', nullable=False)
     
     # Employment Status
     status = Column(String(50), nullable=False, default='active', index=True)

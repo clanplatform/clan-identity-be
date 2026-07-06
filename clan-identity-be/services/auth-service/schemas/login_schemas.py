@@ -54,6 +54,10 @@ class LoginResponse(BaseModel):
     expires_in: int = Field(..., description="Token expiration time in seconds")
     session_id: UUID = Field(..., description="Session ID")
     user: UserLoginInfo = Field(..., description="User info")
+    redirect_to: Optional[str] = Field(
+        None,
+        description="Tenant's application URL (from tenants.allowed_origins) — frontend should redirect here after login",
+    )
 
 
 class ChangePasswordRequest(BaseModel):

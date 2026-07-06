@@ -31,6 +31,10 @@ class UserSyncRequest(BaseModel):
     password_hash: str = Field(..., description="Hashed password from admin_service")
     password_changed: Optional[datetime] = None
     is_password_change: bool = Field(default=False, description="Whether password has been changed from default")
+    can_change_password: bool = Field(
+        default=True,
+        description="True → forced password change on first login; False → log in directly",
+    )
     
     # Employment Status
     status: str = Field(default="active", max_length=50)
