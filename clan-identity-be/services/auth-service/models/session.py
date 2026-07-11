@@ -40,7 +40,6 @@ class Session(Base):
     device_id = Column(String(255), nullable=True)
     device_type = Column(String(50), nullable=True)  # web, mobile, tablet, desktop
     device_name = Column(String(255), nullable=True)
-    device_fingerprint = Column(String(255), nullable=True)
     
     # Client information
     ip_address = Column(String(45), nullable=True)  # IPv6 compatible

@@ -172,6 +172,33 @@ class LoginService:
             return None
 
     @staticmethod
+    def _get_master_redirect_url(admin_db: Session, email: str) -> Optional[str]:
+        """
+        Resolve a master-DB user's application URL from
+        usersetup_basic.allowed_origins in the master admin DB (first entry).
+        Master users have no tenant row, so their redirect target is stored
+        per user — the counterpart of tenants.allowed_origins for tenant users.
+        """
+        try:
+            row = admin_db.execute(
+                text("SELECT allowed_origins FROM usersetup_basic WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+            if row and row.allowed_origins:
+                redirect_url = row.allowed_origins[0]
+                logger.info("[MASTER_REDIRECT] %s → %s", email, redirect_url)
+                return redirect_url
+            logger.info("[MASTER_REDIRECT] %s has no allowed_origins configured", email)
+            return None
+        except Exception as exc:
+            logger.warning("[MASTER_REDIRECT] Lookup failed for %s: %s", email, exc)
+            try:
+                admin_db.rollback()
+            except Exception:
+                pass
+            return None
+
+    @staticmethod
     def _query_usersetup_basic(db: Session, email: str) -> Optional[Dict[str, Any]]:
         """Execute usersetup_basic lookup against a given SQLAlchemy session."""
         try:
@@ -261,6 +288,19 @@ class LoginService:
             except:
                 pass
             return None
+
+    @staticmethod
+    def _resolve_tenant_id(db: Session, email: str) -> Optional[str]:
+        """
+        Resolve a user's tenant_id by email from the local auth_users directory.
+        Every user is eager-synced into auth_users at provisioning, so this is the
+        single source of truth for tenant routing — the client never sends tenant_id.
+        Returns the tenant UUID string, or None for master-DB users / unknown emails.
+        """
+        auth_user = LoginService.get_user_from_auth_service(db, email)
+        if auth_user and auth_user.tenant_id:
+            return str(auth_user.tenant_id)
+        return None
 
     @staticmethod
     def create_auth_user_from_admin_data(
@@ -406,25 +446,17 @@ class LoginService:
         admin_db: Session,
         email: str,
         password: str,
-        tenant_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Authenticate user by email and password.
-        Priority: auth_users table → tenant/master usersetup_basic (fallback for first login)
+        Priority: auth_users table → master usersetup_basic (fallback for first login).
+        The user's tenant_id is taken from the resolved record — never supplied by the
+        caller — and is carried onward only through the JWT.
         """
         # First, try to authenticate from auth_users table (local, faster)
         auth_user = LoginService.get_user_from_auth_service(db, email)
 
         if auth_user:
-            # Validate tenant_id matches
-            if tenant_id and auth_user.tenant_id:
-                if str(auth_user.tenant_id) != str(tenant_id):
-                    logger.warning(
-                        "[AUTH] tenant_id mismatch (auth_users) for email=%s — request=%s user=%s",
-                        email, tenant_id, auth_user.tenant_id
-                    )
-                    return None
-
             if not LoginService._smart_verify(password, auth_user.password_hash):
                 logger.warning(f"Invalid password for auth_user: {email}")
                 return None
@@ -463,24 +495,13 @@ class LoginService:
                 "source": "auth_service",
             }
 
-        # Fallback: tenant DB or master DB usersetup_basic (first-time login)
-        user = LoginService.get_user_from_admin_db(admin_db, email, tenant_id)
+        # Fallback: master DB usersetup_basic. Tenant users are eager-synced into
+        # auth_users, so only master-DB users (tenant_id NULL) reach here — no tenant
+        # routing is required.
+        user = LoginService.get_user_from_admin_db(admin_db, email)
 
         if not user:
             logger.warning("[AUTH] User not found anywhere for email=%s", email)
-            return None
-
-        # Validate tenant_id matches the user's own tenant_id
-        if tenant_id and user.get("tenant_id"):
-            if str(user["tenant_id"]) != str(tenant_id):
-                logger.warning(
-                    "[AUTH] tenant_id mismatch for email=%s — request tenant_id=%s but user belongs to tenant_id=%s",
-                    email, tenant_id, user["tenant_id"]
-                )
-                return None
-        elif tenant_id and not user.get("tenant_id"):
-            # tenant_id provided but user has no tenant assigned
-            logger.warning("[AUTH] tenant_id=%s provided but user %s has no tenant assigned", tenant_id, email)
             return None
 
         pw_match = LoginService._smart_verify(password, user["password_hash"])
@@ -520,11 +541,11 @@ class LoginService:
         - Stores session in auth_service database
         - Returns 403 if password change is required
         """
-        tenant_id_str = str(login_data.tenant_id) if login_data.tenant_id else None
-
-        # Authenticate user (checks auth_users first, then tenant/master DB)
+        # Authenticate user (checks auth_users first, then master DB).
+        # tenant_id is never taken from the request — it is derived from the resolved
+        # user record below and propagated onward only through the JWT.
         user = LoginService.authenticate_user(
-            db, admin_db, login_data.email, login_data.password, tenant_id_str,
+            db, admin_db, login_data.email, login_data.password,
         )
 
         if not user:
@@ -545,6 +566,10 @@ class LoginService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # tenant_id is derived from the authenticated record (auth_users / DB),
+        # never from the request; it is propagated onward only through the JWT.
+        tenant_id_str = str(user["tenant_id"]) if user.get("tenant_id") else None
+
         # AUTOMATIC SYNC: Sync latest user data from tenant/master DB to auth_users
         try:
             admin_user = LoginService.get_user_from_admin_db(admin_db, login_data.email, tenant_id_str)
@@ -566,7 +591,8 @@ class LoginService:
         # Check if user is active
         if user["status"] != "active":
             LoginService._log_login_attempt(
-                db, user["id"], login_data.email, client_ip, user_agent, False, "account_inactive"
+                db, user["id"], login_data.email, client_ip, user_agent, False, "account_inactive",
+                tenant_id=user.get("tenant_id"),
             )
             fire_audit_log(
                 action="LOGIN_FAILED",
@@ -590,7 +616,8 @@ class LoginService:
         if user.get("can_change_password", True) and user["is_password_change_required"]:
             # Log the attempt as successful but requiring password change
             LoginService._log_login_attempt(
-                db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required"
+                db, user["id"], login_data.email, client_ip, user_agent, True, "password_change_required",
+                tenant_id=user.get("tenant_id"),
             )
 
             # Raise HTTPException with password change required info
@@ -625,13 +652,14 @@ class LoginService:
         # Create session in auth_service database
         session = LoginService._create_session(
             db, user["id"], access_token, refresh_token,
-            client_ip, user_agent, login_data.device_fingerprint,
-            refresh_token_expires
+            client_ip, user_agent, refresh_token_expires,
         )
 
         # Log successful attempt in auth_service database
         LoginService._log_login_attempt(
-            db, user["id"], login_data.email, client_ip, user_agent, True, None
+            db, user["id"], login_data.email, client_ip, user_agent, True, None,
+            tenant_id=user.get("tenant_id"),
+            session_id=session.id,
         )
         fire_audit_log(
             action="LOGIN",
@@ -740,11 +768,12 @@ class LoginService:
             tenant_id=user.get("tenant_id"),
         )
 
-        # Tenant users land in their application (tenants.allowed_origins) after login
-        redirect_to = LoginService._get_tenant_redirect_url(
-            admin_db,
-            str(user["tenant_id"]) if user.get("tenant_id") else tenant_id_str,
-        )
+        # Tenant users land in their application (tenants.allowed_origins);
+        # master users in theirs (usersetup_basic.allowed_origins).
+        if tenant_id_str:
+            redirect_to = LoginService._get_tenant_redirect_url(admin_db, tenant_id_str)
+        else:
+            redirect_to = LoginService._get_master_redirect_url(admin_db, login_data.email)
 
         return LoginResponse(
             access_token=access_token,
@@ -765,11 +794,12 @@ class LoginService:
         current_password: str,
         new_password: str,
         confirm_password: str,
-        tenant_id: Optional[str] = None,
     ) -> ChangePasswordResponse:
         """
         Change user password
-        Updates password in admin_service.usersetup_basic AND creates/updates auth_users record
+        Updates password in admin_service.usersetup_basic AND creates/updates auth_users record.
+        The target tenant DB is resolved from the local auth_users directory by email,
+        not supplied by the caller.
         """
         # Validate passwords match
         if new_password != confirm_password:
@@ -782,6 +812,10 @@ class LoginService:
                     "show_popup": True
                 }
             )
+
+        # Resolve the user's tenant from the local auth_users directory (eager-synced).
+        # None ⇒ master-DB user. tenant_id is never supplied by the client.
+        tenant_id = LoginService._resolve_tenant_id(db, email)
 
         # Get user from tenant DB or master DB
         admin_user = LoginService.get_user_from_admin_db(admin_db, email, tenant_id)
@@ -1122,7 +1156,6 @@ class LoginService:
         refresh_token: str,
         ip_address: str,
         user_agent: str,
-        device_fingerprint: str,
         expires_delta: timedelta
     ) -> UserSession:
         """Create a new user session"""
@@ -1133,7 +1166,6 @@ class LoginService:
                 refresh_token_hash=hash_token(refresh_token),
                 ip_address=ip_address,
                 user_agent=user_agent,
-                device_fingerprint=device_fingerprint,
                 expires_at=datetime.now(timezone.utc) + expires_delta
             )
             db.add(session)
@@ -1175,17 +1207,34 @@ class LoginService:
         ip_address: str,
         user_agent: str,
         is_successful: bool,
-        failure_reason: str
+        failure_reason: str,
+        tenant_id=None,
+        session_id=None,
     ):
-        """Log a login attempt"""
+        """
+        Log a login attempt, enriched server-side with device (parsed from
+        User-Agent), network (ip_type/geo/ISP when GeoIP is configured),
+        anonymizer flags, and a rule-based risk score.
+        """
+        # Enrichment is best-effort — never lose the attempt row over it
+        try:
+            from core.login_enrichment import enrich_login_attempt
+            enrichment = enrich_login_attempt(ip_address, user_agent, is_successful)
+        except Exception as exc:
+            logger.warning(f"Login enrichment unavailable: {exc}")
+            enrichment = {}
+
         try:
             attempt = LoginAttempt(
                 user_id=user_id,
+                tenant_id=tenant_id,
+                session_id=session_id,
                 email_or_username=email,
                 ip_address=ip_address or "unknown",
                 user_agent=user_agent,
                 is_successful=is_successful,
-                failure_reason=failure_reason
+                failure_reason=failure_reason,
+                **enrichment,
             )
             db.add(attempt)
             db.commit()

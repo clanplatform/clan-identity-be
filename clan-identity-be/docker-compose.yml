@@ -72,6 +72,9 @@ services:
       ADMIN_POSTGRES_USER: ${ADMIN_POSTGRES_USER:-postgres}
       ADMIN_POSTGRES_PASSWORD: ${ADMIN_POSTGRES_PASSWORD:-root}
       ADMIN_DB: ${ADMIN_DB:-clan_platform}
+      # GeoIP enrichment for login_attempts (files created by scripts/download_geoip.sh)
+      GEOIP_CITY_DB: /geoip/GeoLite2-City.mmdb
+      GEOIP_ASN_DB: /geoip/GeoLite2-ASN.mmdb
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8000"
     depends_on:
@@ -85,6 +88,7 @@ services:
     volumes:
       - ./services/auth-service:/app
       - ./libs:/libs
+      - ./data/geoip:/geoip:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

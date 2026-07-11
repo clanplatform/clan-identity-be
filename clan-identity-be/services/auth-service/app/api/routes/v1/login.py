@@ -114,7 +114,6 @@ def change_password(
         current_password=password_data.current_password,
         new_password=password_data.new_password,
         confirm_password=password_data.confirm_password,
-        tenant_id=str(password_data.tenant_id) if password_data.tenant_id else None,
     )
 
 

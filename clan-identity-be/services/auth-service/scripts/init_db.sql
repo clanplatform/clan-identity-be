@@ -104,7 +104,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     city VARCHAR(100),
     
     -- Device trust
-    device_fingerprint VARCHAR(255),
     is_trusted_device BOOLEAN NOT NULL DEFAULT FALSE,
     
     -- Session status
@@ -116,10 +115,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- Session timing
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_activity TIMESTAMP WITH TIME ZONE,
-    
-    -- Additional metadata
-    remember_me BOOLEAN NOT NULL DEFAULT FALSE,
-    
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -131,34 +127,50 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS login_attempts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    
+
     -- User reference (UUID - may be null for failed attempts)
     user_id UUID,
-    
+
+    -- Tenant / session context
+    tenant_id UUID,                    -- NULL = master user
+    session_id UUID,                   -- set on successful login
+
     -- Attempt details
     email_or_username VARCHAR(255) NOT NULL,
     attempt_type VARCHAR(50) NOT NULL DEFAULT 'password',
-    
+
     -- Result
     is_successful BOOLEAN NOT NULL DEFAULT FALSE,
     failure_reason VARCHAR(100),
-    
-    -- Client information
+
+    -- Network (server-side: request IP + IP-intelligence lookup)
     ip_address VARCHAR(45) NOT NULL,
+    ip_type VARCHAR(10),               -- ipv4 | ipv6
+    isp VARCHAR(150),
+    country VARCHAR(100),
+    region VARCHAR(100),
+    city VARCHAR(100),
+    is_vpn BOOLEAN NOT NULL DEFAULT FALSE,
+    is_proxy BOOLEAN NOT NULL DEFAULT FALSE,
+    is_tor BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- Device (server-side: parsed from User-Agent header)
     user_agent TEXT,
-    
+    device_type VARCHAR(20),           -- desktop | mobile | tablet | bot
+    device_name VARCHAR(100),
+    browser VARCHAR(50),
+    browser_version VARCHAR(20),
+    os VARCHAR(50),
+    os_version VARCHAR(20),
+
     -- Device fingerprint
     device_fingerprint VARCHAR(255),
-    
-    -- Location (based on IP)
-    country VARCHAR(100),
-    city VARCHAR(100),
-    
+
     -- Risk assessment
-    risk_score VARCHAR(10),
+    risk_score SMALLINT,               -- 0-100
     is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
     suspicious_reason VARCHAR(255),
-    
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -195,6 +207,7 @@ CREATE INDEX IF NOT EXISTS idx_login_attempts_created_at ON login_attempts(creat
 CREATE INDEX IF NOT EXISTS idx_login_attempts_user_created ON login_attempts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_created ON login_attempts(ip_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_suspicious ON login_attempts(is_suspicious, created_at DESC) WHERE is_suspicious = true;
+CREATE INDEX IF NOT EXISTS idx_login_attempts_tenant_id ON login_attempts(tenant_id);
 
 -- ============================================================================
 -- Trigger: Update updated_at timestamp automatically
