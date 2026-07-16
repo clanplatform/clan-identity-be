@@ -104,37 +104,36 @@ class LoginService:
     def _get_tenant_db_name(admin_db: Session, email: str, tenant_id: Optional[str] = None) -> Optional[str]:
         """
         Resolve the tenant's dedicated DB name.
-        - tenant_id NOT provided → return None immediately (master-DB user, no lookup)
-        - tenant_id provided     → look up by tenant_id; if not found fall back to
-                                   contact_email (handles wrong/placeholder UUIDs)
+        - tenant_id provided → look up by tenant_id first.
+        - Always fall back to the tenant whose contact_email matches the login email.
+          This is what makes a tenant's FIRST login work: the client sends only
+          email + password (no tenant_id), and the seeded admin exists only in the
+          tenant DB until the first successful login eager-syncs it to auth_users.
+        Returns None for master-DB users / unknown emails.
         """
-        if not tenant_id:
-            return None
-
         try:
-            # 1. Try by tenant_id
-            logger.info("[TENANT_LOOKUP] Searching by tenant_id=%s", tenant_id)
-            row = admin_db.execute(
-                text("SELECT tenant_db_name FROM tenants WHERE tenant_id = :tid AND is_active = true"),
-                {"tid": str(tenant_id)},
-            ).fetchone()
+            # 1. Try by tenant_id when supplied
+            if tenant_id:
+                logger.info("[TENANT_LOOKUP] Searching by tenant_id=%s", tenant_id)
+                row = admin_db.execute(
+                    text("SELECT tenant_db_name FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                    {"tid": str(tenant_id)},
+                ).fetchone()
+                if row and row.tenant_db_name:
+                    logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s", row.tenant_db_name)
+                    return row.tenant_db_name
+                logger.warning("[TENANT_LOOKUP] tenant_id=%s not found, falling back to email lookup", tenant_id)
 
-            if row and row.tenant_db_name:
-                logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s", row.tenant_db_name)
-                return row.tenant_db_name
-
-            # 2. tenant_id given but not matched → fall back to contact_email
-            logger.warning("[TENANT_LOOKUP] tenant_id=%s not found, falling back to email lookup", tenant_id)
+            # 2. Fall back to the tenant whose contact_email matches (also the no-tenant_id path)
             row = admin_db.execute(
                 text("SELECT tenant_db_name FROM tenants WHERE contact_email = :email AND is_active = true"),
                 {"email": email},
             ).fetchone()
-
             if row and row.tenant_db_name:
                 logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s via contact_email", row.tenant_db_name)
                 return row.tenant_db_name
 
-            logger.warning("[TENANT_LOOKUP] No tenant_db_name found for email=%s tenant_id=%s", email, tenant_id)
+            logger.info("[TENANT_LOOKUP] No tenant match for email=%s tenant_id=%s (master-DB user?)", email, tenant_id)
             return None
         except Exception as exc:
             logger.warning("[TENANT_LOOKUP] Error for email=%s: %s", email, exc)
@@ -665,6 +664,7 @@ class LoginService:
             action="LOGIN",
             object_type="AuthUser",
             object_id=str(user["id"]),
+            tenant_id=tenant_id_str,
             user_id=str(user["id"]),
             session_id=str(session.id),
             new_values={"email": user["email"], "username": user.get("username")},
@@ -1136,10 +1136,12 @@ class LoginService:
             access_ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
             blacklist_token(hash_token(access_token), ttl=access_ttl)
 
+        auth_user = db.query(AuthUser).filter(AuthUser.id == user_id).first()
         fire_audit_log(
             action="LOGOUT",
             object_type="AuthUser",
             object_id=str(user_id),
+            tenant_id=str(auth_user.tenant_id) if auth_user and auth_user.tenant_id else None,
             user_id=str(user_id),
             new_values={"sessions_revoked": sessions_revoked, "all_sessions": all_sessions},
         )
