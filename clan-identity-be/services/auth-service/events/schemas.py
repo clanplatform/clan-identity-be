@@ -158,14 +158,7 @@ class UserDataSyncEvent(BaseEvent):
     employee_id: Optional[str] = None
     phone_number: Optional[str] = None
     status: str = "active"
-    department: Optional[str] = None
-    division: Optional[str] = None
-    job_code: Optional[str] = None
-    manage_roles: Optional[list] = None
-    default_dept: Optional[str] = None
-    reporting_to: Optional[str] = None
-    entities: Optional[list] = None
-    default_entity: Optional[str] = None
+    role_id: Optional[str] = None
     sync_source: str = "auth-service"  # Source service triggering sync
     sync_action: str  # login, password_change, profile_update, etc.
     last_login_at: Optional[datetime] = None

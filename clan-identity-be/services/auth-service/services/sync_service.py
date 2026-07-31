@@ -234,28 +234,16 @@ class SyncService:
             can_change_password=getattr(sync_data, "can_change_password", True),
             # Employment Status
             status=sync_data.status,
-            start_date=sync_data.start_date,
-            end_date=sync_data.end_date,
-            tem_employee=sync_data.tem_employee,
-            # Organizational Structure
-            department=sync_data.department,
-            division=sync_data.division,
-            job_code=sync_data.job_code,
-            # Role Management
-            manage_roles=sync_data.manage_roles,
-            # Default Settings
-            default_dept=sync_data.default_dept,
-            reporting_to=sync_data.reporting_to,
-            # Entity Access
-            entities=sync_data.entities,
-            default_entity=sync_data.default_entity,
-            # View Preferences
-            view=sync_data.view,
-            dashboard_view=sync_data.dashboard_view,
+            # Role assignment
+            role_id=getattr(sync_data, "role_id", None),
             # Tenant
             tenant_id=getattr(sync_data, "tenant_id", None),
+            # User group + invite flag + allowed origins
+            user_group_id=getattr(sync_data, "user_group_id", None),
+            send_invite_email=getattr(sync_data, "send_invite_email", False),
+            allowed_origins=getattr(sync_data, "allowed_origins", None),
         )
-        
+
         db.add(auth_user)
         db.commit()
         db.refresh(auth_user)
@@ -292,36 +280,21 @@ class SyncService:
         user.password_changed = sync_data.password_changed
         user.is_password_change = sync_data.is_password_change
         user.can_change_password = getattr(sync_data, "can_change_password", True)
-        
+
         # Employment Status
         user.status = sync_data.status
-        user.start_date = sync_data.start_date
-        user.end_date = sync_data.end_date
-        user.tem_employee = sync_data.tem_employee
-        
-        # Organizational Structure
-        user.department = sync_data.department
-        user.division = sync_data.division
-        user.job_code = sync_data.job_code
-        
-        # Role Management
-        user.manage_roles = sync_data.manage_roles
-        
-        # Default Settings
-        user.default_dept = sync_data.default_dept
-        user.reporting_to = sync_data.reporting_to
-        
-        # Entity Access
-        user.entities = sync_data.entities
-        user.default_entity = sync_data.default_entity
 
-        # View Preferences
-        user.view = sync_data.view
-        user.dashboard_view = sync_data.dashboard_view
+        # Role assignment
+        user.role_id = getattr(sync_data, "role_id", None)
 
         # Tenant
         if getattr(sync_data, "tenant_id", None) is not None:
             user.tenant_id = sync_data.tenant_id
+
+        # User group + invite flag + allowed origins
+        user.user_group_id = getattr(sync_data, "user_group_id", None)
+        user.send_invite_email = getattr(sync_data, "send_invite_email", False)
+        user.allowed_origins = getattr(sync_data, "allowed_origins", None)
 
         # Update timestamp
         user.updated_at = datetime.now(timezone.utc)
@@ -363,22 +336,13 @@ class SyncService:
                 is_password_change=admin_user_data.get("is_password_change", False),
                 can_change_password=admin_user_data.get("can_change_password", True),
                 status=admin_user_data.get("status", "active"),
-                start_date=admin_user_data.get("start_date"),
-                end_date=admin_user_data.get("end_date"),
-                tem_employee=admin_user_data.get("tem_employee", False),
-                department=admin_user_data.get("department"),
-                division=admin_user_data.get("division"),
-                job_code=admin_user_data.get("job_code"),
-                manage_roles=admin_user_data.get("manage_roles"),
-                default_dept=admin_user_data.get("default_dept"),
-                reporting_to=admin_user_data.get("reporting_to"),
-                entities=admin_user_data.get("entities"),
-                default_entity=admin_user_data.get("default_entity"),
-                view=admin_user_data.get("view"),
-                dashboard_view=admin_user_data.get("dashboard_view"),
+                role_id=admin_user_data.get("role_id"),
                 tenant_id=admin_user_data.get("tenant_id"),
+                user_group_id=admin_user_data.get("user_group_id"),
+                send_invite_email=admin_user_data.get("send_invite_email", False),
+                allowed_origins=admin_user_data.get("allowed_origins"),
             )
-            
+
             # Sync the user
             result = SyncService.sync_user(db, sync_data)
             

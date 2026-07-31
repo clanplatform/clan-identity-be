@@ -5,7 +5,7 @@ Schemas for syncing users between admin_service and auth_service
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, date
+from datetime import datetime
 
 
 class UserSyncRequest(BaseModel):
@@ -38,32 +38,17 @@ class UserSyncRequest(BaseModel):
     
     # Employment Status
     status: str = Field(default="active", max_length=50)
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    tem_employee: bool = Field(default=False)
-    
-    # Organizational Structure (UUIDs)
-    department: Optional[UUID] = None
-    division: Optional[UUID] = None
-    job_code: Optional[UUID] = None
-    
-    # Role Management
-    manage_roles: Optional[List[UUID]] = Field(default=None)
-    
-    # Default Settings
-    default_dept: Optional[UUID] = None
-    reporting_to: Optional[UUID] = None
-    
-    # Entity Access
-    entities: Optional[List[UUID]] = Field(default=None)
-    default_entity: Optional[UUID] = None
-    
-    # View Preferences
-    view: Optional[str] = Field(None, max_length=50)
-    dashboard_view: Optional[str] = Field(None, max_length=50)
+
+    # Role assignment — single role (user_role.id), mirrors usersetup_basic.role_id
+    role_id: Optional[UUID] = None
 
     # Tenant identifier (from clients.tenant_id in admin_service)
     tenant_id: Optional[UUID] = Field(None, description="Tenant UUID from clients table")
+
+    # User group + invite flag + per-user allowed origins (mirror usersetup_basic)
+    user_group_id: Optional[UUID] = None
+    send_invite_email: bool = Field(default=False)
+    allowed_origins: Optional[List[str]] = None
 
     class Config:
         json_schema_extra = {
@@ -78,8 +63,7 @@ class UserSyncRequest(BaseModel):
                 "phone_number": "+1234567890",
                 "password_hash": "$2b$12$...",
                 "is_password_change": False,
-                "status": "active",
-                "tem_employee": False
+                "status": "active"
             }
         }
 

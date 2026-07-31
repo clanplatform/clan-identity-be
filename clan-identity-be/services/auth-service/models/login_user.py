@@ -4,7 +4,7 @@ Mirrors the usersetup_basic table structure from admin_service
 Used for local authentication after first password change.
 """
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, Date
+from sqlalchemy import Column, String, DateTime, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 
@@ -45,33 +45,19 @@ class AuthUser(Base):
     
     # Employment Status
     status = Column(String(50), nullable=False, default='active', index=True)
-    start_date = Column(Date, nullable=True)
-    end_date = Column(Date, nullable=True)
-    tem_employee = Column(Boolean, default=False, nullable=False)
-    
-    # Organizational Structure (stored as UUIDs, no FK constraints)
-    department = Column(UUID(as_uuid=True), nullable=True)
-    division = Column(UUID(as_uuid=True), nullable=True)
-    job_code = Column(UUID(as_uuid=True), nullable=True)
-    
-    # Role Management
-    manage_roles = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    
-    # Default Settings
-    default_dept = Column(UUID(as_uuid=True), nullable=True)
-    reporting_to = Column(UUID(as_uuid=True), nullable=True)
-    
+
     # Tenant identifier (from clients.tenant_id in admin_service)
     tenant_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
-    # Entity Access
-    entities = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    default_entity = Column(UUID(as_uuid=True), nullable=True)
-    
-    # View Preferences
-    view = Column(String(50), nullable=True)
-    dashboard_view = Column(String(50), nullable=True)
-    
+    # Role assignment — single role (user_role.id), mirrors usersetup_basic.role_id
+    role_id = Column(UUID(as_uuid=True), nullable=True)
+
+    # User group (bare reference), invite flag and per-user allowed origins
+    # (mirrors usersetup_basic)
+    user_group_id = Column(UUID(as_uuid=True), nullable=True)
+    send_invite_email = Column(Boolean, nullable=False, server_default='false', default=False)
+    allowed_origins = Column(ARRAY(Text), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import logging
 import asyncio
+import re
 
 from core.audit_client import fire_audit_log
 
@@ -101,10 +102,26 @@ class LoginService:
     """
 
     @staticmethod
+    def _tenant_db_name_from_code(tenant_code: Optional[str]) -> Optional[str]:
+        """
+        Derive the tenant's dedicated DB name from tenant_code.
+
+        admin-service no longer stores a tenant_db_name column — the name is
+        computed as clan_platform_<slug(tenant_code)>, matching
+        TenantDatabaseManager.make_db_name / _slugify there
+        (slug = re.sub(r'[^a-z0-9_]', '_', code.lower())).
+        """
+        if not tenant_code or not str(tenant_code).strip():
+            return None
+        slug = re.sub(r"[^a-z0-9_]", "_", str(tenant_code).strip().lower())
+        return f"clan_platform_{slug}"
+
+    @staticmethod
     def _get_tenant_db_name(admin_db: Session, email: str, tenant_id: Optional[str] = None) -> Optional[str]:
         """
-        Resolve the tenant's dedicated DB name.
-        - tenant_id provided → look up by tenant_id first.
+        Resolve the tenant's dedicated DB name, derived from tenants.tenant_code
+        (admin-service no longer stores a tenant_db_name column).
+        - tenant_id provided → look up tenant_code by tenant_id first.
         - Always fall back to the tenant whose contact_email matches the login email.
           This is what makes a tenant's FIRST login work: the client sends only
           email + password (no tenant_id), and the seeded admin exists only in the
@@ -116,22 +133,24 @@ class LoginService:
             if tenant_id:
                 logger.info("[TENANT_LOOKUP] Searching by tenant_id=%s", tenant_id)
                 row = admin_db.execute(
-                    text("SELECT tenant_db_name FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                    text("SELECT tenant_code FROM tenants WHERE tenant_id = :tid AND is_active = true"),
                     {"tid": str(tenant_id)},
                 ).fetchone()
-                if row and row.tenant_db_name:
-                    logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s", row.tenant_db_name)
-                    return row.tenant_db_name
+                db_name = LoginService._tenant_db_name_from_code(row.tenant_code if row else None)
+                if db_name:
+                    logger.info("[TENANT_LOOKUP] Derived tenant_db_name=%s from tenant_code", db_name)
+                    return db_name
                 logger.warning("[TENANT_LOOKUP] tenant_id=%s not found, falling back to email lookup", tenant_id)
 
             # 2. Fall back to the tenant whose contact_email matches (also the no-tenant_id path)
             row = admin_db.execute(
-                text("SELECT tenant_db_name FROM tenants WHERE contact_email = :email AND is_active = true"),
+                text("SELECT tenant_code FROM tenants WHERE contact_email = :email AND is_active = true"),
                 {"email": email},
             ).fetchone()
-            if row and row.tenant_db_name:
-                logger.info("[TENANT_LOOKUP] Found tenant_db_name=%s via contact_email", row.tenant_db_name)
-                return row.tenant_db_name
+            db_name = LoginService._tenant_db_name_from_code(row.tenant_code if row else None)
+            if db_name:
+                logger.info("[TENANT_LOOKUP] Derived tenant_db_name=%s from tenant_code via contact_email", db_name)
+                return db_name
 
             logger.info("[TENANT_LOOKUP] No tenant match for email=%s tenant_id=%s (master-DB user?)", email, tenant_id)
             return None
@@ -217,14 +236,10 @@ class LoginService:
                     NOT ub.is_password_change as is_password_change_required,
                     ub.can_change_password,
                     ub.status,
-                    ub.department,
-                    ub.division,
-                    ub.job_code,
-                    ub.manage_roles,
-                    ub.default_dept,
-                    ub.reporting_to,
-                    ub.entities,
-                    ub.default_entity,
+                    ub.role_id,
+                    ub.user_group_id,
+                    ub.send_invite_email,
+                    ub.allowed_origins,
                     ub.created_at,
                     ub.updated_at,
                     ub.tenant_id
@@ -249,14 +264,10 @@ class LoginService:
                 "is_password_change_required": result.is_password_change_required,
                 "can_change_password": result.can_change_password,
                 "status": result.status,
-                "department": result.department,
-                "division": result.division,
-                "job_code": result.job_code,
-                "manage_roles": result.manage_roles,
-                "default_dept": result.default_dept,
-                "reporting_to": result.reporting_to,
-                "entities": result.entities,
-                "default_entity": result.default_entity,
+                "role_id": result.role_id,
+                "user_group_id": result.user_group_id,
+                "send_invite_email": result.send_invite_email,
+                "allowed_origins": result.allowed_origins,
                 "created_at": result.created_at,
                 "updated_at": result.updated_at,
                 "tenant_id": result.tenant_id,
@@ -330,28 +341,16 @@ class LoginService:
                 is_password_change=True,  # Password has been changed
                 # Employment Status
                 status=admin_user_data.get("status", "active"),
-                start_date=admin_user_data.get("start_date"),
-                end_date=admin_user_data.get("end_date"),
-                tem_employee=admin_user_data.get("tem_employee", False),
-                # Organizational Structure
-                department=admin_user_data.get("department"),
-                division=admin_user_data.get("division"),
-                job_code=admin_user_data.get("job_code"),
-                # Role Management
-                manage_roles=admin_user_data.get("manage_roles"),
-                # Default Settings
-                default_dept=admin_user_data.get("default_dept"),
-                reporting_to=admin_user_data.get("reporting_to"),
-                # Entity Access
-                entities=admin_user_data.get("entities"),
-                default_entity=admin_user_data.get("default_entity"),
-                # View Preferences
-                view=admin_user_data.get("view"),
-                dashboard_view=admin_user_data.get("dashboard_view"),
+                # Role assignment
+                role_id=admin_user_data.get("role_id"),
                 # Tenant
                 tenant_id=admin_user_data.get("tenant_id"),
+                # User group + invite flag + allowed origins
+                user_group_id=admin_user_data.get("user_group_id"),
+                send_invite_email=admin_user_data.get("send_invite_email", False),
+                allowed_origins=admin_user_data.get("allowed_origins"),
             )
-            
+
             db.add(auth_user)
             db.commit()
             db.refresh(auth_user)
@@ -475,19 +474,7 @@ class LoginService:
                 "is_password_change_required": not auth_user.is_password_change,
                 "can_change_password": getattr(auth_user, "can_change_password", True),
                 "status": auth_user.status,
-                "start_date": auth_user.start_date,
-                "end_date": auth_user.end_date,
-                "tem_employee": auth_user.tem_employee,
-                "department": auth_user.department,
-                "division": auth_user.division,
-                "job_code": auth_user.job_code,
-                "manage_roles": auth_user.manage_roles or [],
-                "default_dept": auth_user.default_dept,
-                "reporting_to": auth_user.reporting_to,
-                "entities": auth_user.entities,
-                "default_entity": auth_user.default_entity,
-                "view": auth_user.view,
-                "dashboard_view": auth_user.dashboard_view,
+                "role_id": auth_user.role_id,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
                 "tenant_id": auth_user.tenant_id,
@@ -739,14 +726,7 @@ class LoginService:
                     employee_id=user.get("employee_id"),
                     phone_number=user.get("phone_number"),
                     status=user.get("status", "active"),
-                    department=uuid_to_str(user.get("department")),
-                    division=uuid_to_str(user.get("division")),
-                    job_code=uuid_to_str(user.get("job_code")),
-                    manage_roles=user.get("manage_roles"),
-                    default_dept=uuid_to_str(user.get("default_dept")),
-                    reporting_to=uuid_to_str(user.get("reporting_to")),
-                    entities=user.get("entities"),
-                    default_entity=uuid_to_str(user.get("default_entity")),
+                    role_id=uuid_to_str(user.get("role_id")),
                     last_login_at=datetime.now(timezone.utc),
                     last_login_ip=client_ip
                 )
@@ -763,9 +743,9 @@ class LoginService:
             lastname=user["lastname"],
             employee_id=user["employee_id"],
             status=user["status"],
-            roles=user["manage_roles"] or [],
+            role_id=user.get("role_id"),
             admin_user_id=user["user_setup_id"],
-            tenant_id=user.get("tenant_id"),
+            # tenant_id is NOT surfaced to the client — it travels in the JWT only.
         )
 
         # Tenant users land in their application (tenants.allowed_origins);
@@ -958,14 +938,7 @@ class LoginService:
                     employee_id=admin_user.get("employee_id"),
                     phone_number=admin_user.get("phone_number"),
                     status=admin_user.get("status", "active"),
-                    department=uuid_to_str(admin_user.get("department")),
-                    division=uuid_to_str(admin_user.get("division")),
-                    job_code=uuid_to_str(admin_user.get("job_code")),
-                    manage_roles=admin_user.get("manage_roles"),
-                    default_dept=uuid_to_str(admin_user.get("default_dept")),
-                    reporting_to=uuid_to_str(admin_user.get("reporting_to")),
-                    entities=admin_user.get("entities"),
-                    default_entity=uuid_to_str(admin_user.get("default_entity"))
+                    role_id=uuid_to_str(admin_user.get("role_id"))
                 )
             )
         except Exception as e:
