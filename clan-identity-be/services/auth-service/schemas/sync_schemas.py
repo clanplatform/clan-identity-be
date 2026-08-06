@@ -42,6 +42,10 @@ class UserSyncRequest(BaseModel):
     # Role assignment — single role (user_role.id), mirrors usersetup_basic.role_id
     role_id: Optional[UUID] = None
 
+    # Branch / location — entities.entity_id, mirrors usersetup_basic.entity_id.
+    # A user can belong to multiple entities; the first is the default/primary.
+    entity_id: Optional[List[UUID]] = None
+
     # Tenant identifier (from clients.tenant_id in admin_service)
     tenant_id: Optional[UUID] = Field(None, description="Tenant UUID from clients table")
 

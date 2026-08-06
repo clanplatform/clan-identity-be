@@ -5,7 +5,7 @@ Functions to publish authentication-related events to Kafka
 import logging
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 from ..kafka_client import get_producer, KAFKA_ENABLED
@@ -503,6 +503,7 @@ async def publish_user_data_sync_event(
     phone_number: Optional[str] = None,
     status: str = "active",
     role_id: Optional[str] = None,
+    entity_id: Optional[List[UUID]] = None,
     last_login_at: Optional[datetime] = None,
     last_login_ip: Optional[str] = None,
     correlation_id: Optional[str] = None
@@ -536,6 +537,7 @@ async def publish_user_data_sync_event(
             phone_number=phone_number,
             status=status,
             role_id=role_id,
+            entity_id=entity_id,
             sync_action=sync_action,
             last_login_at=last_login_at,
             last_login_ip=last_login_ip,

@@ -236,6 +236,8 @@ class SyncService:
             status=sync_data.status,
             # Role assignment
             role_id=getattr(sync_data, "role_id", None),
+            # Branch / location
+            entity_id=getattr(sync_data, "entity_id", None),
             # Tenant
             tenant_id=getattr(sync_data, "tenant_id", None),
             # User group + invite flag + allowed origins
@@ -287,6 +289,9 @@ class SyncService:
         # Role assignment
         user.role_id = getattr(sync_data, "role_id", None)
 
+        # Branch / location
+        user.entity_id = getattr(sync_data, "entity_id", None)
+
         # Tenant
         if getattr(sync_data, "tenant_id", None) is not None:
             user.tenant_id = sync_data.tenant_id
@@ -337,6 +342,7 @@ class SyncService:
                 can_change_password=admin_user_data.get("can_change_password", True),
                 status=admin_user_data.get("status", "active"),
                 role_id=admin_user_data.get("role_id"),
+                entity_id=admin_user_data.get("entity_id"),
                 tenant_id=admin_user_data.get("tenant_id"),
                 user_group_id=admin_user_data.get("user_group_id"),
                 send_invite_email=admin_user_data.get("send_invite_email", False),

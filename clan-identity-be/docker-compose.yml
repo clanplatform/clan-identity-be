@@ -1,26 +1,8 @@
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: clan-identity-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: ${POSTGRES_DB:-clan_identity}
-      POSTGRES_MULTIPLE_DATABASES: clan_identity,user_service,session_service,rbac_service,oauth_service
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
-    networks:
-      - clan-identity-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # PostgreSQL: no local container — all repos share one Postgres server
+  # (admin-service-postgres, published on host port 5432, db clan_platform).
+  # Reached via host.docker.internal since it lives in platform-domain-be's
+  # docker-compose project (only joins that repo's own admin-network).
 
   # Redis Cache
   redis:
@@ -58,15 +40,16 @@ services:
       JWT_ALGORITHM: RS256
       JWT_ISSUER: clan-identity
       JWT_AUDIENCE: api-gateway
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: clan_identity
+      POSTGRES_DB: clan_platform
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
-      # Admin Service Database (External Repository)
+      # Admin Service Database (External Repository) — same physical DB as
+      # POSTGRES_* above now that all repos share one Postgres server.
       ADMIN_POSTGRES_HOST: ${ADMIN_POSTGRES_HOST:-host.docker.internal}
       ADMIN_POSTGRES_PORT: ${ADMIN_POSTGRES_PORT:-5432}
       ADMIN_POSTGRES_USER: ${ADMIN_POSTGRES_USER:-postgres}
@@ -78,8 +61,6 @@ services:
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -105,19 +86,17 @@ services:
       - ./config/environments/.env.local
     environment:
       SERVICE_NAME: user-service
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: user_service
+      POSTGRES_DB: clan_platform
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
     ports:
       - "${USER_SERVICE_PORT:-8002}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -126,6 +105,8 @@ services:
     volumes:
       - ./services/user-service:/app
       - ./libs:/libs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Session Service
   session-service:
@@ -140,19 +121,17 @@ services:
       - ./config/environments/.env.local
     environment:
       SERVICE_NAME: session-service
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: session_service
+      POSTGRES_DB: clan_platform
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
     ports:
       - "${SESSION_SERVICE_PORT:-8003}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -161,6 +140,8 @@ services:
     volumes:
       - ./services/session-service:/app
       - ./libs:/libs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # RBAC Service
   rbac-service:
@@ -175,19 +156,17 @@ services:
       - ./config/environments/.env.local
     environment:
       SERVICE_NAME: rbac-service
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: rbac_service
+      POSTGRES_DB: clan_platform
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
     ports:
       - "${RBAC_SERVICE_PORT:-8004}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -196,6 +175,8 @@ services:
     volumes:
       - ./services/rbac-service:/app
       - ./libs:/libs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # OAuth Service
   oauth-service:
@@ -210,19 +191,17 @@ services:
       - ./config/environments/.env.local
     environment:
       SERVICE_NAME: oauth-service
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
-      POSTGRES_DB: oauth_service
+      POSTGRES_DB: clan_platform
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
     ports:
       - "${OAUTH_SERVICE_PORT:-8005}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -231,10 +210,10 @@ services:
     volumes:
       - ./services/oauth-service:/app
       - ./libs:/libs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
-  postgres_data:
-    driver: local
   redis_data:
     driver: local
 

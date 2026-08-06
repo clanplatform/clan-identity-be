@@ -3,7 +3,7 @@ Login Schemas for authentication
 Request and response schemas for login-related endpoints
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 
@@ -26,6 +26,7 @@ class UserLoginInfo(BaseModel):
     employee_id: Optional[str] = Field(None, description="Employee ID")
     status: str = Field(..., description="User status")
     role_id: Optional[UUID] = Field(None, description="Assigned role ID (user_role.id)")
+    entity_id: Optional[List[UUID]] = Field(None, description="Branch(es) / location(s) (entities.entity_id); first is the default")
     admin_user_id: Optional[UUID] = Field(None, description="Reference to admin service user")
     # NOTE: tenant_id is intentionally NOT exposed in the login response. It is
     # embedded in the JWT and resolved server-side; the client never sees it.

@@ -237,6 +237,7 @@ class LoginService:
                     ub.can_change_password,
                     ub.status,
                     ub.role_id,
+                    ub.entity_id,
                     ub.user_group_id,
                     ub.send_invite_email,
                     ub.allowed_origins,
@@ -265,6 +266,7 @@ class LoginService:
                 "can_change_password": result.can_change_password,
                 "status": result.status,
                 "role_id": result.role_id,
+                "entity_id": result.entity_id,
                 "user_group_id": result.user_group_id,
                 "send_invite_email": result.send_invite_email,
                 "allowed_origins": result.allowed_origins,
@@ -343,6 +345,8 @@ class LoginService:
                 status=admin_user_data.get("status", "active"),
                 # Role assignment
                 role_id=admin_user_data.get("role_id"),
+                # Branch / location
+                entity_id=admin_user_data.get("entity_id"),
                 # Tenant
                 tenant_id=admin_user_data.get("tenant_id"),
                 # User group + invite flag + allowed origins
@@ -475,6 +479,7 @@ class LoginService:
                 "can_change_password": getattr(auth_user, "can_change_password", True),
                 "status": auth_user.status,
                 "role_id": auth_user.role_id,
+                "entity_id": auth_user.entity_id,
                 "created_at": auth_user.created_at,
                 "updated_at": auth_user.updated_at,
                 "tenant_id": auth_user.tenant_id,
@@ -727,6 +732,7 @@ class LoginService:
                     phone_number=user.get("phone_number"),
                     status=user.get("status", "active"),
                     role_id=uuid_to_str(user.get("role_id")),
+                    entity_id=user.get("entity_id"),  # list of UUID; pydantic serializes each
                     last_login_at=datetime.now(timezone.utc),
                     last_login_ip=client_ip
                 )
@@ -744,6 +750,7 @@ class LoginService:
             employee_id=user["employee_id"],
             status=user["status"],
             role_id=user.get("role_id"),
+            entity_id=user.get("entity_id"),
             admin_user_id=user["user_setup_id"],
             # tenant_id is NOT surfaced to the client — it travels in the JWT only.
         )
@@ -938,7 +945,8 @@ class LoginService:
                     employee_id=admin_user.get("employee_id"),
                     phone_number=admin_user.get("phone_number"),
                     status=admin_user.get("status", "active"),
-                    role_id=uuid_to_str(admin_user.get("role_id"))
+                    role_id=uuid_to_str(admin_user.get("role_id")),
+                    entity_id=admin_user.get("entity_id")  # list of UUID; pydantic serializes each
                 )
             )
         except Exception as e:

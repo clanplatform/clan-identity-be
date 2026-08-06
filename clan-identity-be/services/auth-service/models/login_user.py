@@ -52,6 +52,21 @@ class AuthUser(Base):
     # Role assignment — single role (user_role.id), mirrors usersetup_basic.role_id
     role_id = Column(UUID(as_uuid=True), nullable=True)
 
+    # Branch / location — entities.entity_id, mirrors usersetup_basic.entity_id.
+    # A user can belong to multiple entities; the first is the default/primary.
+    entity_id = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
+
+    # Department / Division Access — mirrors usersetup_basic.department_id /
+    # .division_id, used to resolve a role's access_scope of "department" or
+    # "division". Backend-derived in admin-service from job_code_id below,
+    # not accepted/returned on either service's schema.
+    department_id = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
+    division_id = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
+
+    # Job code (job_codes.id in admin-service — no local FK, cross-database),
+    # mirrors usersetup_basic.job_code_id.
+    job_code_id = Column(UUID(as_uuid=True), nullable=True)
+
     # User group (bare reference), invite flag and per-user allowed origins
     # (mirrors usersetup_basic)
     user_group_id = Column(UUID(as_uuid=True), nullable=True)

@@ -48,6 +48,10 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # clan_platform is now shared across services — keep this service's
+        # migration history in its own version table so it doesn't collide
+        # with admin-service's (or any other service's) "alembic_version".
+        version_table="alembic_version_auth",
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -60,7 +64,11 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table="alembic_version_auth",
+        )
         with context.begin_transaction():
             context.run_migrations()
 

@@ -3,7 +3,7 @@
 Pydantic models for Kafka events published by auth service
 """
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from uuid import UUID
 
@@ -159,6 +159,7 @@ class UserDataSyncEvent(BaseEvent):
     phone_number: Optional[str] = None
     status: str = "active"
     role_id: Optional[str] = None
+    entity_id: Optional[List[UUID]] = None
     sync_source: str = "auth-service"  # Source service triggering sync
     sync_action: str  # login, password_change, profile_update, etc.
     last_login_at: Optional[datetime] = None
