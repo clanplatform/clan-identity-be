@@ -120,12 +120,21 @@ class LoginService:
     def _get_tenant_db_name(admin_db: Session, email: str, tenant_id: Optional[str] = None) -> Optional[str]:
         """
         Resolve the tenant's dedicated DB name, derived from tenants.tenant_code
-        (admin-service no longer stores a tenant_db_name column).
+        (admin-service no longer stores a tenant_db_name column — see
+        Tenant.tenant_db_name / TenantDatabaseManager.make_db_name: the client's
+        onboarding company.client_code becomes tenants.tenant_code, and the DB
+        name is clan_platform_<slug(tenant_code)>).
         - tenant_id provided → look up tenant_code by tenant_id first.
-        - Always fall back to the tenant whose contact_email matches the login email.
-          This is what makes a tenant's FIRST login work: the client sends only
-          email + password (no tenant_id), and the seeded admin exists only in the
-          tenant DB until the first successful login eager-syncs it to auth_users.
+        - Always fall back to the tenant whose owner_email matches the login
+          email. This is what makes a tenant's FIRST login work: the client
+          sends only email + password (no tenant_id), and the seeded admin
+          exists only in the tenant DB until the first successful login
+          eager-syncs it to auth_users. tenants.owner_email is the admin's
+          actual login credential (see admin-service
+          OnboardingCompany.owner_email) — tenants.contact_email is just the
+          tenant's general business contact, not a login field, and is
+          deliberately NOT checked here: it can collide with another tenant's
+          owner_email and resolve to the wrong tenant DB.
         Returns None for master-DB users / unknown emails.
         """
         try:
@@ -142,14 +151,15 @@ class LoginService:
                     return db_name
                 logger.warning("[TENANT_LOOKUP] tenant_id=%s not found, falling back to email lookup", tenant_id)
 
-            # 2. Fall back to the tenant whose contact_email matches (also the no-tenant_id path)
+            # 2. Fall back to the tenant whose owner_email (the actual admin
+            # login email) matches (also the no-tenant_id path).
             row = admin_db.execute(
-                text("SELECT tenant_code FROM tenants WHERE contact_email = :email AND is_active = true"),
+                text("SELECT tenant_code FROM tenants WHERE owner_email = :email AND is_active = true"),
                 {"email": email},
             ).fetchone()
             db_name = LoginService._tenant_db_name_from_code(row.tenant_code if row else None)
             if db_name:
-                logger.info("[TENANT_LOOKUP] Derived tenant_db_name=%s from tenant_code via contact_email", db_name)
+                logger.info("[TENANT_LOOKUP] Derived tenant_db_name=%s from tenant_code via owner_email", db_name)
                 return db_name
 
             logger.info("[TENANT_LOOKUP] No tenant match for email=%s tenant_id=%s (master-DB user?)", email, tenant_id)
@@ -404,8 +414,13 @@ class LoginService:
         """
         Get user from usersetup_basic by email.
 
-        If tenant_id is provided (or the email matches a tenant's contact_email),
+        If tenant_id is provided (or the email matches a tenant's owner_email),
         queries that tenant's dedicated database.  Falls back to the master DB.
+
+        usersetup_basic.password_hash is the single source of truth for login —
+        admin-service's create_onboarding seeds the owner's row with the EXACT
+        SAME hash as tenants.owner_password_hash (not a second, independently
+        salted hash of the same password), so no override is needed here.
         """
         tenant_db_name = LoginService._get_tenant_db_name(admin_db, email, tenant_id)
 
@@ -882,7 +897,27 @@ class LoginService:
             admin_db.execute(update_query, update_params)
             admin_db.commit()
             logger.info("Password updated in master DB for %s", email)
-        
+
+        # Keep tenants.owner_password_hash in sync when this email is a tenant
+        # owner. Not required for login (usersetup_basic.password_hash above
+        # is the actual source of truth there), but the two are seeded as the
+        # same value at onboarding (see create_onboarding) and should stay
+        # that way rather than silently drifting after a password change.
+        try:
+            result = admin_db.execute(
+                text(
+                    "UPDATE tenants SET owner_password_hash = :password_hash "
+                    "WHERE owner_email = :email AND is_active = true"
+                ),
+                {"password_hash": new_hash, "email": email},
+            )
+            admin_db.commit()
+            if result.rowcount:
+                logger.info("owner_password_hash updated in tenants for %s", email)
+        except Exception as exc:
+            admin_db.rollback()
+            logger.warning("Failed to sync owner_password_hash for %s: %s", email, exc)
+
         # AUTOMATIC SYNC: Sync updated user data to auth_users after password change
         try:
             logger.info(f"Auto-syncing user data after password change for {email}")
