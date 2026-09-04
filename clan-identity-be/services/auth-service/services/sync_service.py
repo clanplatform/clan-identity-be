@@ -51,6 +51,18 @@ class SyncService:
                 (AuthUser.id == sync_data.id) | (AuthUser.user_setup_id == sync_data.user_setup_id)
             ).first()
 
+            # Fall back to matching by email. email/username/employee_id are all
+            # UNIQUE on auth_users, so a re-provisioned user (e.g. a tenant
+            # dropped and re-onboarded — new usersetup_basic id + user_setup_id,
+            # same login email) has no id/user_setup_id match here yet would
+            # collide on the unique email in _create_auth_user. Updating the
+            # existing row instead refreshes its password_hash / tenant_id /
+            # user_setup_id so the new credentials actually work.
+            if not existing_user and getattr(sync_data, "email", None):
+                existing_user = db.query(AuthUser).filter(
+                    AuthUser.email == sync_data.email
+                ).first()
+
             if existing_user:
                 # Update existing user
                 operation = "updated"
@@ -268,7 +280,13 @@ class SyncService:
         # Update ID if different (to sync primary keys)
         if user.id != sync_data.id:
             user.id = sync_data.id
-        
+
+        # Keep the admin-service linkage current — a row matched by email (see
+        # sync_user) may still carry a stale user_setup_id from a previous
+        # provisioning of this user.
+        if getattr(sync_data, "user_setup_id", None) is not None:
+            user.user_setup_id = sync_data.user_setup_id
+
         # Personal Information
         user.firstname = sync_data.firstname
         user.lastname = sync_data.lastname
