@@ -448,27 +448,36 @@ class LoginService:
                 if tenant_engine:
                     tenant_engine.dispose()
 
-        # Fallback: master DB
+        # Tenant DBs take precedence over the master DB. If the same email
+        # exists as a tenant user AND a master (tenant_id NULL) user, the
+        # tenant identity must win — otherwise the first login resolves to the
+        # master row and login()'s auto-sync caches it in auth_users as a
+        # master user permanently. So scan the tenant DBs BEFORE falling back
+        # to master. (Opt-in: AUTH_TENANT_DB_SCAN — the login API takes no
+        # tenant_id, so this is the only way to find a not-yet-synced tenant
+        # user at all.)
+        if settings.AUTH_TENANT_DB_SCAN:
+            scanned = LoginService._scan_tenant_dbs_for_user(admin_db, email)
+            if scanned:
+                return scanned
+
+        # Fallback: master DB — genuine master platform users (tenant_id NULL).
         logger.info("[USER_LOOKUP] Falling back to master DB for email=%s", email)
         user = LoginService._query_usersetup_basic(admin_db, email)
         if user:
             logger.info("[USER_LOOKUP] User found in master DB")
             return user
         logger.warning("[USER_LOOKUP] User %s NOT found in master DB either", email)
-
-        # Last resort: a regular tenant user (email != any owner_email) that was
-        # never eager-synced into auth_users can't be routed any other way — the
-        # login API takes no tenant_id. Opt-in scan of every active tenant DB.
-        if settings.AUTH_TENANT_DB_SCAN and not tenant_id:
-            return LoginService._scan_tenant_dbs_for_user(admin_db, email)
         return None
 
     @staticmethod
     def _scan_tenant_dbs_for_user(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
         """Look up `email` in usersetup_basic across every active tenant DB,
-        first match wins. Fallback only — used when normal routing (auth_users,
-        owner_email, master DB) all miss. The returned dict carries the row's
-        own usersetup_basic.tenant_id, so downstream tenant routing still works.
+        first match wins. Runs after the targeted lookups (auth_users,
+        owner_email / explicit tenant_id) and BEFORE the master-DB fallback, so
+        a tenant user always beats a same-email master user. The returned dict
+        carries the row's own usersetup_basic.tenant_id, so downstream tenant
+        routing still works.
         """
         try:
             rows = admin_db.execute(
