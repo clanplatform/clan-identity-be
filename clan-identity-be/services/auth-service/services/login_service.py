@@ -453,9 +453,60 @@ class LoginService:
         user = LoginService._query_usersetup_basic(admin_db, email)
         if user:
             logger.info("[USER_LOOKUP] User found in master DB")
-        else:
-            logger.warning("[USER_LOOKUP] User %s NOT found in master DB either", email)
-        return user
+            return user
+        logger.warning("[USER_LOOKUP] User %s NOT found in master DB either", email)
+
+        # Last resort: a regular tenant user (email != any owner_email) that was
+        # never eager-synced into auth_users can't be routed any other way — the
+        # login API takes no tenant_id. Opt-in scan of every active tenant DB.
+        if settings.AUTH_TENANT_DB_SCAN and not tenant_id:
+            return LoginService._scan_tenant_dbs_for_user(admin_db, email)
+        return None
+
+    @staticmethod
+    def _scan_tenant_dbs_for_user(admin_db: Session, email: str) -> Optional[Dict[str, Any]]:
+        """Look up `email` in usersetup_basic across every active tenant DB,
+        first match wins. Fallback only — used when normal routing (auth_users,
+        owner_email, master DB) all miss. The returned dict carries the row's
+        own usersetup_basic.tenant_id, so downstream tenant routing still works.
+        """
+        try:
+            rows = admin_db.execute(
+                text(
+                    "SELECT tenant_code FROM tenants "
+                    "WHERE is_active = true AND tenant_code IS NOT NULL"
+                )
+            ).fetchall()
+        except Exception as exc:
+            logger.warning("[USER_LOOKUP] tenant scan: could not list tenants: %s", exc)
+            return None
+
+        base_url = settings.ADMIN_DATABASE_URL.rsplit("/", 1)[0]
+        for row in rows:
+            db_name = LoginService._tenant_db_name_from_code(row.tenant_code)
+            if not db_name:
+                continue
+            engine = None
+            try:
+                engine = create_engine(
+                    base_url + "/" + db_name, pool_pre_ping=True, pool_size=1, max_overflow=1
+                )
+                session = sessionmaker(bind=engine)()
+                try:
+                    user = LoginService._query_usersetup_basic(session, email)
+                    if user:
+                        logger.info("[USER_LOOKUP] tenant scan: found %s in %s", email, db_name)
+                        return user
+                finally:
+                    session.close()
+            except Exception as exc:
+                logger.debug("[USER_LOOKUP] tenant scan: %s not searchable: %s", db_name, exc)
+            finally:
+                if engine:
+                    engine.dispose()
+
+        logger.warning("[USER_LOOKUP] tenant scan: %s not found in any tenant DB", email)
+        return None
 
     @staticmethod
     def authenticate_user(
@@ -501,9 +552,10 @@ class LoginService:
                 "source": "auth_service",
             }
 
-        # Fallback: master DB usersetup_basic. Tenant users are eager-synced into
-        # auth_users, so only master-DB users (tenant_id NULL) reach here — no tenant
-        # routing is required.
+        # Fallback: usersetup_basic. Normally only master-DB users (tenant_id
+        # NULL) reach here — tenant users are eager-synced into auth_users. A
+        # tenant user that wasn't synced is resolved by owner_email, or (opt-in)
+        # by AUTH_TENANT_DB_SCAN inside get_user_from_admin_db.
         user = LoginService.get_user_from_admin_db(admin_db, email)
 
         if not user:
@@ -523,12 +575,18 @@ class LoginService:
     @staticmethod
     def _smart_verify(password_input: str, stored_hash: str) -> bool:
         """
-        Accept either a plaintext password or the bcrypt hash itself.
-        - If the input starts with a bcrypt prefix ($2a$, $2b$, $2y$),
-          compare it directly against the stored hash (hash == hash).
-        - Otherwise treat it as plaintext and run bcrypt verify.
+        Verify a login password against its stored bcrypt hash.
+
+        Normally the input is treated as plaintext and run through bcrypt.
+        When settings.ALLOW_HASH_LOGIN is enabled (dev/testing only — it turns
+        the stored hash into a working credential, so a DB leak becomes
+        account takeover), an input that is itself a bcrypt hash ($2a$/$2b$/
+        $2y$) is accepted by exact string match against the stored hash.
         """
-        if password_input.startswith(("$2a$", "$2b$", "$2y$")):
+        if (
+            settings.ALLOW_HASH_LOGIN
+            and password_input.startswith(("$2a$", "$2b$", "$2y$"))
+        ):
             return password_input == stored_hash
         return verify_password(password_input, stored_hash)
 

@@ -58,6 +58,12 @@ services:
       # GeoIP enrichment for login_attempts (files created by scripts/download_geoip.sh)
       GEOIP_CITY_DB: /geoip/GeoLite2-City.mmdb
       GEOIP_ASN_DB: /geoip/GeoLite2-ASN.mmdb
+      # Local-dev login conveniences (see core/config.py). Do NOT set these on
+      # a real deployment: ALLOW_HASH_LOGIN makes the stored password hash a
+      # working credential; AUTH_TENANT_DB_SCAN scans every tenant DB when an
+      # email can't be routed otherwise.
+      ALLOW_HASH_LOGIN: "true"
+      AUTH_TENANT_DB_SCAN: "true"
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8000"
     depends_on:

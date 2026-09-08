@@ -100,6 +100,18 @@ class Settings(BaseSettings):
     # Internal API Key for service-to-service communication
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "internal-api-key-change-in-production")
 
+    # --- Login conveniences — BOTH default OFF; only enable outside production ---
+    # ALLOW_HASH_LOGIN: accept the stored bcrypt hash itself as the password
+    # (exact string match). Makes the password hash a working credential, so a
+    # DB leak becomes account takeover — keep this false in production.
+    ALLOW_HASH_LOGIN: bool = os.getenv("ALLOW_HASH_LOGIN", "false").lower() == "true"
+    # AUTH_TENANT_DB_SCAN: when a login email resolves to no tenant (it isn't
+    # any tenant's owner_email) and isn't in the master DB, scan every active
+    # tenant DB for it. Safety net for regular tenant users that were never
+    # eager-synced into auth_users (e.g. onboarding ran before the auth-sync
+    # was deployed). N short-lived connections on a cache-miss login.
+    AUTH_TENANT_DB_SCAN: bool = os.getenv("AUTH_TENANT_DB_SCAN", "false").lower() == "true"
+
     # Audit Service
     AUDIT_SERVICE_URL: str = os.getenv("AUDIT_SERVICE_URL", "http://audit-service:8000")
 
